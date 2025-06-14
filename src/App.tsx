@@ -3,7 +3,9 @@ import { Navigate, Route, Routes, useRoutes } from "react-router-dom";
 import routes from "tempo-routes";
 import LoginForm from "./components/auth/LoginForm";
 import SignUpForm from "./components/auth/SignUpForm";
-import Dashboard from "./components/pages/dashboard";
+import UserDashboard from "./components/pages/user-dashboard";
+import AnalysisPage from "./components/pages/analysis";
+import SubscriptionPage from "./components/pages/subscription";
 import Success from "./components/pages/success";
 import Home from "./components/pages/home";
 import { AuthProvider, useAuth } from "../supabase/auth";
@@ -34,16 +36,27 @@ function AppRoutes() {
           path="/dashboard"
           element={
             <PrivateRoute>
-              <Dashboard />
+              <UserDashboard />
             </PrivateRoute>
           }
         />
         <Route
-          path="/success"
+          path="/analysis"
           element={
-            <Success />
+            <PrivateRoute>
+              <AnalysisPage />
+            </PrivateRoute>
           }
         />
+        <Route
+          path="/subscription"
+          element={
+            <PrivateRoute>
+              <SubscriptionPage />
+            </PrivateRoute>
+          }
+        />
+        <Route path="/success" element={<Success />} />
       </Routes>
       {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
     </>

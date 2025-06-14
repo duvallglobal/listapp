@@ -22,16 +22,9 @@ import { Link } from "react-router-dom";
 
 interface TopNavigationProps {
   onSearch?: (query: string) => void;
-  notifications?: Array<{ id: string; title: string }>;
 }
 
-const TopNavigation = ({
-  onSearch = () => {},
-  notifications = [
-    { id: "1", title: "New project assigned" },
-    { id: "2", title: "Meeting reminder" },
-  ],
-}: TopNavigationProps) => {
+const TopNavigation = ({ onSearch = () => {} }: TopNavigationProps) => {
   const { user, signOut } = useAuth();
 
   if (!user) return null;
@@ -45,7 +38,7 @@ const TopNavigation = ({
         <div className="relative w-64">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
           <Input
-            placeholder="Search projects..."
+            placeholder="Search analyses..."
             className="pl-8 h-9 text-sm border-gray-200 focus:border-gray-300"
             onChange={(e) => onSearch(e.target.value)}
           />
@@ -53,50 +46,6 @@ const TopNavigation = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative text-gray-700">
-                    <Bell className="h-5 w-5" />
-                    {notifications.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                        {notifications.length}
-                      </span>
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {notifications.map((notification) => (
-                    <DropdownMenuItem key={notification.id} className="py-2">
-                      {notification.title}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Notifications</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-gray-700">
-                <Settings className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Settings</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 text-gray-700">
