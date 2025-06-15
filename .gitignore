@@ -37,3 +37,36 @@ dist-ssr
 core
 
 .github/
+.env
+.env.development
+.env.production
+api/.env
+
+# Docker related
+.dockerignore
+Dockerfile
+api/Dockerfile
+docker-compose.yml
+nginx/Dockerfile
+nginx/default.conf
+nginx/nginx.conf
+
+# Python
+api/requirements.txt
+api/src/__init__.py
+api/src/main.py
+
+# Database
+db/init.sql
+
+# Documentation
+docs/docker/README.md
+
+# Dependencies
+package-lock.json
+
+# Specific components (if you want to ignore them)
+src/components/dashboard/ActivityFeed.tsx
+src/components/dashboard/layout/Sidebar.tsx
+src/components/pages/user-dashboard.tsx
+EOF
