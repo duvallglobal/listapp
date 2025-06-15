@@ -1,0 +1,16 @@
+Now, let's implement the core engine of the application. Based on our entire conversation and the project documents, I need you to generate the complete, production-ready Python code for the backend services, tools, and the AI crew. This implementation must use the real APIs we discussed, with no mock data.
+Please proceed with the following steps:
+Step 1: Implement the Core Data Services
+api/src/services/vision_service.py: Write the VisionService class. It must contain methods that make actual API calls to both Google Vision and Microsoft Computer Vision, returning structured results.
+api/src/services/google_shopping_service.py: Implement the GoogleShoppingService. This service must make real API calls to a Google Shopping data provider (like SerpApi or another service, assuming the API key is in the environment) to fetch product listings and prices based on a search query.
+api/src/services/gemini_service.py: Implement the GeminiService. This will be used by the AI agents for advanced reasoning and content generation. It should have a method that takes a prompt and returns the generated text.
+api/src/services/fee_service.py: Implement a FeeService that contains the platform fee data from the "Unified Platform Fee Table" in Product Analysis AI System Overview.pdf.
+Step 2: Implement the LangChain Tools
+api/src/tools/*.py: Based on the services from Step 1, create the corresponding LangChain Tool objects. These tools will be the bridge that allows the AI agents to interact with the real-world data services. For example, create a GoogleShoppingSearchTool that uses the GoogleShoppingService.
+Step 3: Implement the AI Orchestration with CrewAI
+api/src/agents/*.py: Define the specific roles, goals, and backstories for the VisionAnalyst, MarketResearchAnalyst, and PlatformRecommendationAnalyst agents. Equip them with the tools created in Step 2.
+api/src/agents/crew.py: Implement the ProductAnalysisCrew.
+Define the full sequence of Tasks for the agents to collaborate on an analysis request.
+The crew's final output must be a single, structured JSON object that strictly conforms to the Output Schema defined for the analyzeProductImage function in Product Analysis AI System Overview.pdf. This includes generating the productName, detailedDescription, tagsKeywords, recommendedPricing, and platformRecommendation with net profit calculations.
+Final Instruction:
+Generate the complete and runnable Python code for all the files mentioned in these three steps. The code must be production-ready, performant, and correctly integrate the real data services as we've specified."
