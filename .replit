@@ -1,0 +1,8 @@
+modules = ["nodejs-20", "python-3.12", "web", "deno-2", "gcloud", "python-base-3.12", "docker"]
+run = "npm run dev"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "npm run dev"]
