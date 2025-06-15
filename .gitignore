@@ -22,6 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.emv.example
 
 !node_modules/.vite
 
