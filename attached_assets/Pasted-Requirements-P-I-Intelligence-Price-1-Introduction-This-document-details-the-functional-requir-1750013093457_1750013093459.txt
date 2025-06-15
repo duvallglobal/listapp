@@ -1,0 +1,126 @@
+Requirements - P.I.
+Intelligence
+- Price
+1. Introduction
+This document details the functional requirements for the Price Intelligence AI
+(P.I.) app. It outlines the specific capabilities needed for the application,
+incorporating the latest updates to AI providers and subscription plans.
+2. Core Functional Requirements
+2.1. User Accounts & Login
+Allow new users to register with an email and password.
+Verify new user emails.
+Log in registered users securely.
+Require strong passwords.
+Provide a secure password reset mechanism.
+Automatically assign "Free Trial" status (details defined under Subscription).
+Assign a unique ID to each user and link it to their data.
+2.2. Item Analysis Request & Processing
+Allow logged-in users to start a new analysis.
+Photo Upload System:
+Support multiple image formats (JPG, PNG, HEIF/HEIC).
+Allow uploading multiple photos per item analysis request.
+Provide immediate feedback on image quality/usability (e.g., resolution too
+low, blurry).
+Check if the user has analysis credits before starting.
+Deduct one analysis credit when the analysis processing begins.
+Securely store uploaded photos linked to the analysis.
+Requirements - P.I. - Price Intelligence 1
+Show the user that the analysis is processing.
+Allow users to optionally specify the item's condition (New, Like New, etc.).
+2.3. AI Analysis & Data Processing (Backend)
+Image Enhancement: Apply enhancement algorithms to uploaded images for
+potentially better AI recognition.
+AI Image Analysis:
+Identify the item (category, brand, model where possible) using AI Vision
+APIs (e.g., Google Cloud Vision, Perplexity, Qwen, Gemini Pro,
+OpenRouter). The system may use one or multiple APIs for improved
+accuracy or based on configuration.
+Assess item condition based on visual cues (supplements user input).
+Detect key features/attributes (materials, color, etc.).
+Generate a confidence score for the identification accuracy.
+Price Estimation Engine:
+Integrate with market data sources for real-time valuation across key
+platforms (Google Shopping, Facebook Marketplace, eBay, Poshmark,
+Xtrader, etc.).
+Calculate low, medium, and high estimated price ranges, with the
+recommended price being prominent.
+Adjust price estimations based on item condition (AI-assessed).
+Marketplace Recommendation System:
+Analyze suitability of top platforms (Google Shopping, Facebook
+Marketplace, eBay, Poshmark, Xtrader, etc.) for the identified item
+category and price point.
+Calculate estimated commission/seller fees for each recommended
+platform. Fee data must be kept reasonably current.
+Rank recommendations prioritizing potential net profit (Price - Fees).
+Provide insights into platform reach/audience relevant to the item (briefly).
+Requirements - P.I. - Price Intelligence 2
+Predict a basic success likelihood or suitability rating for top
+recommended platforms.
+Listing Content Generator:
+Generate SEO-optimized listing titles using identified item details via LLM
+APIs (e.g., Google, OpenAI, Perplexity, Qwen, OpenRouter).
+Generate detailed item descriptions based on identified features and
+condition.
+Recommend relevant keywords and tags.
+Generate content adaptable to common templates/styles of target
+marketplaces.
+Save all analysis results (item details, condition, confidence, price ranges,
+recommendations with fees/insights, generated content) linked to the analysis
+ID and user ID.
+Handle processing errors gracefully and record the error status.
+2.4. Results Display & Interaction
+Notify the user upon analysis completion.
+Display successful results clearly, including:
+Uploaded image(s).
+Identified Item Name (with confidence score if available).
+Item Condition (user-provided and/or AI-assessed).
+Predicted Price Range (Low, Medium, High).
+Top Recommended Marketplace(s) with reasoning (including fee impact,
+audience/reach notes, success prediction).
+Generated Title, Description, and Tags.
+Historical Pricing Trends: Visualize basic historical pricing trends for the
+identified item type (if data available).
+Provide separate "Copy" buttons for key result parts (Name, Condition, Price,
+Title, Description, Tags).
+Requirements - P.I. - Price Intelligence 3
+Show a clear error message if analysis fails.
+2.5. Subscription Management
+Provide an "Account" / "Subscription" page.
+Define and manage tiered access levels:
+Free Trial: 2 analyses total upon sign-up.
+Basic: $9.99/month for 20 analyses.
+Pro: $19.99/month for 50 analyses.
+Business: $29.99/month for 100 analyses.
+Enterprise: $69.99/month for unlimited analyses.
+(Note: Pricing and credit amounts are per month unless otherwise
+specified. Define rollover/expiry rules for unused credits if applicable).
+Show the user's current plan, status, and remaining analysis credits/quota for
+the current billing period.
+Track usage against plan quotas. Prevent analysis initiation if quota is
+exceeded (except for Enterprise).
+Integrate secure payment processing (e.g., Stripe) for purchasing/upgrading
+plans.
+Link to a payment provider portal (e.g., Stripe Customer Portal) for managing
+payment methods and cancellations.
+Update user plan status/credits based on payment events (via webhooks).
+2.6. User Dashboard & History
+Provide a dashboard showing the user's analysis history.
+List past analyses with summaries (image, name, date, price, top marketplace,
+status).
+Allow filtering history (date, category, marketplace, status).
+Allow clicking an analysis to view its full results.
+Allow exporting selected analysis data (CSV, PDF).
+Requirements - P.I. - Price Intelligence 4
+Inventory Management: Allow users to view and manage their scanned items
+list (beyond just history).
+Aggregate Trends: Display aggregate pricing history and trends based on the
+user's scanned items or categories.
+Saved Items: Allow users explicitly save specific analysis
+results/recommendations for easy reference.
+2.7 . Administration
+Provide a secure basic admin interface.
+Allow viewing aggregate usage statistics.
+Allow lookup of user account details and status.
+Allow basic configuration management (e.g., API keys, default AI provider
+selection).
+Requirements - P.I. - Price Intelligence
