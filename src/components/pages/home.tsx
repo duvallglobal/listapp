@@ -497,9 +497,10 @@ export default function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <section className="py-16 md:py-24 bg-gray-50">
-          <div className="container px-4 mx-auto">
-            <div className="text-center mb-16">
+        <section className="py-16 md:py-24 relative">
+          <div className="absolute inset-0 animated-gradient opacity-10"></div>
+          <div className="container px-4 mx-auto relative">
+            <div className="text-center mb-16 fade-in-up">
               <Badge className="mb-4 bg-gray-200 text-gray-800 hover:bg-gray-300 border-none">
                 Features
               </Badge>
@@ -511,24 +512,49 @@ export default function LandingPage() {
                 to help you maximize profits across all major selling platforms.
               </p>
             </div>
+            <div className="grid md:grid-cols-3 gap-8 stagger-children">
+              <Card className="glass-card text-center group" style={{"--stagger": 1}}>
+                <div className="w-12 h-12 gradient-accent rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform floating-animation">
+                  <Camera className="h-10 w-10 text-white" />
+                </div>
+                <CardTitle className="text-xl font-semibold mb-2 text-black">AI Image Analysis</CardTitle>
+                <CardContent>
+                  <p className="text-gray-600">
+                    Upload photos and get instant product identification, condition
+                    assessment, and authenticity verification.
+                  </p>
+                </CardContent>
+              </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {features.map((feature, index) => (
-                <Card
-                  key={index}
-                  className="border-gray-200 bg-gradient-to-b from-white to-gray-50 shadow-md hover:shadow-lg transition-shadow"
-                >
-                  <CardHeader>
-                    <div className="mb-4">{feature.icon}</div>
-                    <CardTitle className="text-black">
-                      {feature.title}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-gray-600">{feature.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
+              <Card className="glass-card text-center group" style={{"--stagger": 2}}>
+                <div className="w-12 h-12 gradient-primary rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform floating-animation" style={{animationDelay: "2s"}}>
+                  <TrendingUp className="h-10 w-10 text-white" />
+                </div>
+                <CardTitle className="text-xl font-semibold mb-2 text-black">
+                  Smart Price Estimates
+                </CardTitle>
+                <CardContent>
+                  <p className="text-gray-600">
+                    Get data-driven pricing recommendations based on real market
+                    data and comparable sales.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card text-center group" style={{"--stagger": 3}}>
+                <div className="w-12 h-12 gradient-secondary rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform floating-animation" style={{animationDelay: "4s"}}>
+                  <Target className="h-10 w-10 text-white" />
+                </div>
+                <CardTitle className="text-xl font-semibold mb-2 text-black">
+                  Platform Recommendations
+                </CardTitle>
+                <CardContent>
+                  <p className="text-gray-600">
+                    Discover the best marketplaces for your items with optimized
+                    listing strategies.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </section>
