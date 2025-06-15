@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,8 +12,29 @@ import TaskBoard from "../dashboard/TaskBoard";
 import SubscriptionInfo from "../dashboard/SubscriptionInfo";
 import AnalysisHistory from "../dashboard/AnalysisHistory";
 
+
+// If you encounter module resolution errors, ensure tsconfig.json includes the supabase directory and these files.
+import { supabase } from "../../supabase/supabase";
+import { useAuth } from "../../supabase/auth";
+
 export default function UserDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [activityFeed, setActivityFeed] = useState([]);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      if (!user) return;
+      // Example: fetch activity from a 'user_activity' table
+      const { data, error } = await supabase
+        .from("user_activity")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      if (!error) setActivityFeed(data || []);
+    };
+    fetchActivity();
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -108,50 +129,16 @@ export default function UserDashboard() {
                     onUpgrade={() => setActiveTab("subscription")}
                   />
 
-                  <Card className="mt-6">
-                    <CardHeader>
-                      <CardTitle>Recent Activity</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ActivityFeed
-                        activities={[
-                          {
-                            id: "1",
-                            type: "update",
-                            user: {
-                              name: "System",
-                              avatar:
-                                "https://api.dicebear.com/7.x/avataaars/svg?seed=System",
-                            },
-                            content: "Analyzed Vintage Leather Jacket",
-                            timestamp: "5m ago",
-                          },
-                          {
-                            id: "2",
-                            type: "comment",
-                            user: {
-                              name: "You",
-                              avatar:
-                                "https://api.dicebear.com/7.x/avataaars/svg?seed=You",
-                            },
-                            content: "Saved analysis to history",
-                            timestamp: "15m ago",
-                          },
-                          {
-                            id: "3",
-                            type: "commit",
-                            user: {
-                              name: "System",
-                              avatar:
-                                "https://api.dicebear.com/7.x/avataaars/svg?seed=System",
-                            },
-                            content: "Subscription renewed",
-                            timestamp: "1d ago",
-                          },
-                        ]}
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Recent Activity</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ActivityFeed activities={activityFeed} />
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               </div>
 
@@ -212,6 +199,12 @@ export default function UserDashboard() {
                   <Link to="/subscription">
                     <Button className="gap-2">
                       Manage Subscription
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                  <Link to="/subscription">
+                    <Button className="gap-2 mt-2" variant="outline">
+                      Upgrade
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </Link>

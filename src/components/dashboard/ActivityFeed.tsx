@@ -21,51 +21,7 @@ interface ActivityFeedProps {
   activities?: ActivityItem[];
 }
 
-const defaultActivities: ActivityItem[] = [
-  {
-    id: "1",
-    type: "comment",
-    user: {
-      name: "Sarah Chen",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
-    },
-    content: "Added comments on the UI design proposal",
-    timestamp: "5m ago",
-    project: "Website Redesign",
-  },
-  {
-    id: "2",
-    type: "commit",
-    user: {
-      name: "Alex Kim",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex",
-    },
-    content: "Pushed 3 commits to main branch",
-    timestamp: "15m ago",
-    project: "Backend API",
-  },
-  {
-    id: "3",
-    type: "mention",
-    user: {
-      name: "Maria Garcia",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Maria",
-    },
-    content: "Mentioned you in the sprint planning document",
-    timestamp: "1h ago",
-  },
-  {
-    id: "4",
-    type: "update",
-    user: {
-      name: "James Wilson",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=James",
-    },
-    content: "Updated the project timeline",
-    timestamp: "2h ago",
-    project: "Mobile App",
-  },
-];
+
 
 const getActivityIcon = (type: ActivityItem["type"]) => {
   switch (type) {
@@ -83,7 +39,7 @@ const getActivityIcon = (type: ActivityItem["type"]) => {
 };
 
 const ActivityFeed = ({
-  activities = defaultActivities,
+  activities = [],
 }: ActivityFeedProps) => {
   return (
     <div className="h-full">

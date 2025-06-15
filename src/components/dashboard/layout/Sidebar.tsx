@@ -26,17 +26,22 @@ interface SidebarProps {
 }
 
 const defaultNavItems: NavItem[] = [
-  { icon: <Home size={18} />, label: "Home" },
-  { icon: <LayoutDashboard size={18} />, label: "Dashboard", isActive: true },
+  { icon: <LayoutDashboard size={18} />, label: "Dashboard", href: "/dashboard" },
+  { icon: <FolderKanban size={18} />, label: "Product Analysis", href: "/analysis" },
+  { icon: <Calendar size={18} />, label: "Subscription", href: "/subscription" },
+  { icon: <Users size={18} />, label: "Team", href: "/team" },
+  { icon: <HelpCircle size={18} />, label: "Help", href: "/help" },
 ];
 
 const defaultBottomItems: NavItem[] = [];
 
+import { Link, useLocation } from "react-router-dom";
+
 const Sidebar = ({
   items = defaultNavItems,
-  activeItem = "Dashboard",
-  onItemClick = () => {},
+  activeItem,
 }: SidebarProps) => {
+  const location = useLocation();
   return (
     <div className="w-[240px] h-full border-r border-gray-200 bg-white flex flex-col">
       <div className="p-4">
@@ -47,32 +52,18 @@ const Sidebar = ({
       <ScrollArea className="flex-1 px-3">
         <div className="space-y-1">
           {items.map((item) => (
-            <Button
+            <Link
               key={item.label}
-              variant={item.label === activeItem ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2 text-sm h-10"
-              onClick={() => onItemClick(item.label)}
+              to={item.href || "/"}
+              className={`w-full flex items-center gap-2 text-sm h-10 px-4 py-2 rounded-md transition-colors ${location.pathname.startsWith(item.href || "/") ? "bg-gray-100 text-primary font-semibold" : "hover:bg-gray-50 text-gray-700"}`}
+              style={{ textDecoration: "none" }}
             >
               {item.icon}
               {item.label}
-            </Button>
+            </Link>
           ))}
         </div>
       </ScrollArea>
-
-      <div className="p-3 mt-auto border-t border-gray-200">
-        {defaultBottomItems.map((item) => (
-          <Button
-            key={item.label}
-            variant="ghost"
-            className="w-full justify-start gap-2 text-sm h-10 mb-1"
-            onClick={() => onItemClick(item.label)}
-          >
-            {item.icon}
-            {item.label}
-          </Button>
-        ))}
-      </div>
     </div>
   );
 };

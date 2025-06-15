@@ -375,6 +375,12 @@ export default function ProductAnalyzer({
         title: "Analysis saved",
         description: "This analysis has been saved to your history.",
       });
+      // Reset form state after successful save
+      setSelectedImages([]);
+      setPreviewImage(null);
+      setAnalysisResult(null);
+      setSelectedCondition("good");
+      setActiveTab("upload");
     } catch (error) {
       console.error("Error saving analysis:", error);
       toast({

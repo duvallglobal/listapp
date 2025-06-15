@@ -24,8 +24,11 @@ interface TopNavigationProps {
   onSearch?: (query: string) => void;
 }
 
+import { useNavigate } from "react-router-dom";
+
 const TopNavigation = ({ onSearch = () => {} }: TopNavigationProps) => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   if (!user) return null;
 
@@ -64,11 +67,11 @@ const TopNavigation = ({ onSearch = () => {} }: TopNavigationProps) => {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="py-2">
+            <DropdownMenuItem className="py-2" onSelect={() => navigate("/profile") }>
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem className="py-2">
+            <DropdownMenuItem className="py-2" onSelect={() => navigate("/settings") }>
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </DropdownMenuItem>
