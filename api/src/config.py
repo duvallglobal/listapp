@@ -1,37 +1,38 @@
-
 from pydantic_settings import BaseSettings
+from functools import lru_cache
 from typing import List, Optional
 import os
-
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
-    # App Configuration
+    # API Configuration
+    API_TITLE: str = "Price Intelligence API"
+    API_VERSION: str = "1.0.0"
+    DEBUG: bool = False
     APP_NAME: str = "Price Intelligence API"
     VERSION: str = "1.0.0"
-    DEBUG: bool = False
-    
-    # API Keys - Vision Services
+
+    # Database & Authentication
+    DATABASE_URL: Optional[str] = None
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_KEY: str
+    SUPABASE_ANON_KEY: str
+
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_PASSWORD: Optional[str] = None
+
+    # AI Service API Keys
     GOOGLE_VISION_API_KEY: str
     GOOGLE_GEMINI_API_KEY: str
     MICROSOFT_VISION_API_KEY: str
     MICROSOFT_VISION_ENDPOINT: str
     OPENAI_API_KEY: Optional[str] = None
     
-    # API Keys - Marketplace Services  
-    GOOGLE_SHOPPING_API_KEY: str
+    # Market Data APIs
+    SERPAPI_KEY: Optional[str] = None
     EBAY_APP_ID: str
-    
-    # Database & Authentication
-    SUPABASE_URL: str
-    SUPABASE_SERVICE_KEY: str
-    SUPABASE_ANON_KEY: str
-    DATABASE_URL: Optional[str] = None
-    
-    # Cache & Session
-    REDIS_URL: str = "redis://localhost:6379"
-    REDIS_PASSWORD: Optional[str] = None
     
     # Payment Processing
     STRIPE_SECRET_KEY: str
@@ -39,17 +40,29 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None
     
     # Security
+    SECRET_KEY: str = "your-secret-key-change-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_SECRET_KEY: str = "your-super-secret-jwt-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
     
-    # CORS Settings
+    # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:3000", 
         "https://*.replit.dev",
         "https://*.replit.app"
     ]
+    
+    # File Upload
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+    ALLOWED_EXTENSIONS: set = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"}
+
+    # Cache TTL (seconds)
+    ANALYSIS_CACHE_TTL: int = 3600  # 1 hour
+    PRICE_CACHE_TTL: int = 1800     # 30 minutes
+    CACHE_EXPIRATION_HOURS: int = 24
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -81,7 +94,6 @@ class Settings(BaseSettings):
     # Analysis Configuration
     DEFAULT_ANALYSIS_TIMEOUT: int = 300  # 5 minutes
     MAX_CONCURRENT_ANALYSES: int = 10
-    CACHE_EXPIRATION_HOURS: int = 24
     
     # Subscription Tiers
     SUBSCRIPTION_TIERS: dict = {
@@ -141,67 +153,42 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
-        env_file_encoding = "utf-8"
         case_sensitive = True
 
-
-# Create settings instance
-settings = Settings()
-
-# Dependency function for FastAPI
+@lru_cache()
 def get_settings() -> Settings:
-    return settings
+    """Get cached settings instance"""
+    return Settings()
 
+# Global settings instance
+settings = get_settings()
 
-# Validation functions
-def validate_api_keys():
-    """Validate that required API keys are present"""
-    required_keys = [
-        "GOOGLE_VISION_API_KEY",
-        "GOOGLE_GEMINI_API_KEY", 
-        "MICROSOFT_VISION_API_KEY",
-        "GOOGLE_SHOPPING_API_KEY",
-        "EBAY_APP_ID",
-        "SUPABASE_URL",
-        "SUPABASE_SERVICE_KEY",
-        "STRIPE_SECRET_KEY",
-        "STRIPE_WEBHOOK_SECRET"
-    ]
-    
-    missing_keys = []
-    for key in required_keys:
-        if not getattr(settings, key, None):
-            missing_keys.append(key)
-    
-    if missing_keys:
-        raise ValueError(f"Missing required environment variables: {', '.join(missing_keys)}")
+# Validate critical settings
+def validate_settings():
+    """Validate that critical settings are configured"""
+    warnings = []
 
+    if not settings.GOOGLE_GEMINI_API_KEY:
+        warnings.append("GOOGLE_GEMINI_API_KEY not set - AI content generation will fail")
 
-def get_marketplace_fee(platform: str) -> float:
-    """Get fee percentage for a marketplace platform"""
-    return settings.MARKETPLACE_FEES.get(platform.lower(), 0.10)  # Default 10%
+    if not settings.SERPAPI_KEY:
+        warnings.append("SERPAPI_KEY not set - market research will fail")
 
+    if not settings.GOOGLE_VISION_API_KEY:
+        warnings.append("GOOGLE_VISION_API_KEY not set - image analysis may be limited")
 
-def is_feature_enabled(feature: str) -> bool:
-    """Check if a feature flag is enabled"""
-    feature_map = {
-        "google_shopping": settings.ENABLE_GOOGLE_SHOPPING,
-        "ebay": settings.ENABLE_EBAY_INTEGRATION,
-        "microsoft_vision": settings.ENABLE_MICROSOFT_VISION,
-        "gemini_pro": settings.ENABLE_GEMINI_PRO,
-        "mock_data": settings.ENABLE_MOCK_DATA
-    }
-    return feature_map.get(feature.lower(), False)
+    if not settings.MICROSOFT_VISION_API_KEY:
+        warnings.append("MICROSOFT_VISION_API_KEY not set - image analysis may be limited")
 
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
+        warnings.append("Supabase not configured - user features will be limited")
+        
+    if not settings.STRIPE_SECRET_KEY:
+        warnings.append("Stripe not configured - payment features will be limited")
 
-def get_subscription_tier(tier_name: str) -> dict:
-    """Get subscription tier configuration"""
-    return settings.SUBSCRIPTION_TIERS.get(tier_name.lower(), settings.SUBSCRIPTION_TIERS["free_trial"])
+    for warning in warnings:
+        import logging
+        logging.getLogger(__name__).warning(warning)
 
-
-# Initialize validation on import
-try:
-    validate_api_keys()
-except ValueError as e:
-    print(f"Configuration Warning: {e}")
-    print("Some features may not work without proper API keys configured.")
+# Run validation on import
+validate_settings()

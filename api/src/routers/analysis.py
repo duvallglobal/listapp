@@ -1,199 +1,249 @@
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any
 import uuid
+import logging
+from typing import Optional, Dict, Any
 import asyncio
-from datetime import datetime
 
-from ..dependencies import get_current_user, get_redis_client, rate_limit_per_minute
+from ..dependencies import get_current_user, get_optional_user, get_redis_client
+from ..models.analysis import AnalysisResponse, AnalysisRequest
+from ..agents.crew import product_analysis_crew
 from ..services.cache_service import CacheService
-from ..services.vision_service import VisionService
-from ..services.gemini_service import GeminiService
-from ..services.microsoft_vision_service import MicrosoftVisionService
-from ..services.google_shopping_service import GoogleShoppingService
-from ..services.marketplace_service import MarketplaceService
-from ..config import settings
-from ..models.analysis import AnalysisRequest, AnalysisResponse
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
+logger = logging.getLogger(__name__)
 
-@router.post("/upload", response_model=Dict[str, str])
-async def upload_image_for_analysis(
+@router.post("/analyze", response_model=AnalysisResponse)
+async def analyze_product_image(
     background_tasks: BackgroundTasks,
     image: UploadFile = File(...),
-    condition: str = Form(...),
-    user = Depends(get_current_user),
-    redis_client = Depends(get_redis_client),
-    _rate_limit = Depends(rate_limit_per_minute)
+    estimated_cost: Optional[float] = Form(0.0),
+    user = Depends(get_optional_user),
+    redis_client = Depends(get_redis_client)
 ):
-    """Upload image and start analysis process"""
+    """
+    Analyze a product image and get pricing and platform recommendations
     
-    # Validate file type
-    if not image.content_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="File must be an image")
+    This endpoint:
+    1. Accepts an image file upload
+    2. Runs the ProductAnalysisCrew workflow in the background
+    3. Returns an analysis ID for status tracking
+    4. Stores results in Redis cache when complete
+    """
     
-    # Generate task ID
-    task_id = str(uuid.uuid4())
-    
-    # Read image data
-    image_data = await image.read()
-    
-    # Validate file size
-    if len(image_data) > settings.MAX_IMAGE_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image too large")
-    
-    # Initialize cache service
-    cache_service = CacheService(redis_client)
-    
-    # Set initial status
-    await cache_service.set_analysis(task_id, {
-        "status": "queued",
-        "stage": "upload_complete",
-        "progress": 0,
-        "user_id": user.id,
-        "created_at": datetime.utcnow().isoformat()
-    })
-    
-    # Start background analysis
-    background_tasks.add_task(
-        process_product_analysis,
-        task_id,
-        image_data,
-        condition,
-        user.id,
-        cache_service
-    )
-    
-    return {"task_id": task_id, "status": "processing"}
+    try:
+        # Validate image file
+        if not image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Read image data
+        image_data = await image.read()
+        
+        if len(image_data) > 10 * 1024 * 1024:  # 10MB limit
+            raise HTTPException(status_code=400, detail="Image file too large (max 10MB)")
+        
+        # Generate analysis ID
+        analysis_id = str(uuid.uuid4())
+        
+        # Initialize cache service
+        cache_service = CacheService(redis_client)
+        
+        # Set initial status
+        await cache_service.set_analysis_status(analysis_id, "processing", "Analysis started")
+        
+        # Start background analysis
+        background_tasks.add_task(
+            run_product_analysis,
+            analysis_id,
+            image_data,
+            estimated_cost or 0.0,
+            cache_service,
+            user.id if user else None
+        )
+        
+        return AnalysisResponse(
+            analysis_id=analysis_id,
+            status="processing",
+            message="Analysis started. Use the analysis_id to check status.",
+            estimated_completion_time=120  # 2 minutes estimate
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to start analysis")
 
-@router.get("/status/{task_id}")
+async def run_product_analysis(
+    analysis_id: str,
+    image_data: bytes,
+    estimated_cost: float,
+    cache_service: CacheService,
+    user_id: Optional[str] = None
+):
+    """Background task to run the complete product analysis"""
+    
+    try:
+        logger.info(f"Starting product analysis {analysis_id}")
+        
+        # Update status
+        await cache_service.set_analysis_status(
+            analysis_id, 
+            "processing", 
+            "Running AI analysis workflow..."
+        )
+        
+        # Run the CrewAI analysis
+        result = await product_analysis_crew.analyze_product_image(image_data, estimated_cost)
+        
+        # Store complete results
+        await cache_service.set_analysis_result(analysis_id, result)
+        
+        # Update status to completed
+        await cache_service.set_analysis_status(
+            analysis_id, 
+            "completed", 
+            "Analysis completed successfully"
+        )
+        
+        # Store in user history if user is authenticated
+        if user_id and result.get('confidence', 0) > 0.5:
+            try:
+                await store_user_analysis_history(user_id, analysis_id, result)
+            except Exception as e:
+                logger.warning(f"Failed to store user history: {str(e)}")
+        
+        logger.info(f"Analysis {analysis_id} completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Analysis {analysis_id} failed: {str(e)}")
+        
+        # Store error result
+        error_result = {
+            "error": str(e),
+            "analysis_id": analysis_id,
+            "status": "failed"
+        }
+        
+        await cache_service.set_analysis_result(analysis_id, error_result)
+        await cache_service.set_analysis_status(
+            analysis_id, 
+            "failed", 
+            f"Analysis failed: {str(e)}"
+        )
+
+@router.get("/status/{analysis_id}")
 async def get_analysis_status(
-    task_id: str,
+    analysis_id: str,
+    redis_client = Depends(get_redis_client)
+):
+    """Get the status of a running analysis"""
+    
+    try:
+        cache_service = CacheService(redis_client)
+        status = await cache_service.get_analysis_status(analysis_id)
+        
+        if not status:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        
+        return status
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting analysis status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get analysis status")
+
+@router.get("/result/{analysis_id}")
+async def get_analysis_result(
+    analysis_id: str,
+    redis_client = Depends(get_redis_client)
+):
+    """Get the results of a completed analysis"""
+    
+    try:
+        cache_service = CacheService(redis_client)
+        
+        # Check status first
+        status = await cache_service.get_analysis_status(analysis_id)
+        if not status:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        
+        if status["status"] != "completed":
+            return {
+                "analysis_id": analysis_id,
+                "status": status["status"],
+                "message": status.get("message", "Analysis not completed")
+            }
+        
+        # Get results
+        result = await cache_service.get_analysis_result(analysis_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Analysis results not found")
+        
+        return {
+            "analysis_id": analysis_id,
+            "status": "completed",
+            "result": result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting analysis result: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get analysis result")
+
+@router.delete("/result/{analysis_id}")
+async def delete_analysis_result(
+    analysis_id: str,
     user = Depends(get_current_user),
     redis_client = Depends(get_redis_client)
 ):
-    """Get analysis status and results"""
+    """Delete analysis results (authenticated users only)"""
     
-    cache_service = CacheService(redis_client)
-    analysis = await cache_service.get_analysis(task_id)
+    try:
+        cache_service = CacheService(redis_client)
+        
+        # Delete from cache
+        await cache_service.delete_analysis(analysis_id)
+        
+        return {"message": "Analysis deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete analysis")
+
+async def store_user_analysis_history(user_id: str, analysis_id: str, result: Dict[str, Any]):
+    """Store analysis in user's history (placeholder for database integration)"""
+    # This would integrate with your database to store user analysis history
+    # For now, just log it
+    logger.info(f"Would store analysis {analysis_id} for user {user_id}")
     
-    if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    
-    # Verify ownership
-    if analysis.get("user_id") != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    return analysis
+    # Example integration with Supabase would go here:
+    # supabase_client = get_supabase_client()
+    # await supabase_client.table("analysis_history").insert({
+    #     "user_id": user_id,
+    #     "analysis_id": analysis_id,
+    #     "product_name": result.get("productName"),
+    #     "recommended_platform": result.get("platformRecommendation", {}).get("recommendedPlatform"),
+    #     "recommended_price": result.get("recommendedPricing", {}).get("suggestedPrice"),
+    #     "analysis_data": result
+    # })
 
 @router.get("/history")
-async def get_analysis_history(
-    limit: int = 20,
-    offset: int = 0,
-    user = Depends(get_current_user)
+async def get_user_analysis_history(
+    user = Depends(get_current_user),
+    limit: int = 50,
+    offset: int = 0
 ):
-    """Get user's analysis history"""
+    """Get user's analysis history (placeholder)"""
     
-    # Implementation would fetch from database
-    # For now, return mock data structure
+    # This would query the database for user's analysis history
+    # For now, return empty list
     return {
         "analyses": [],
         "total": 0,
         "limit": limit,
         "offset": offset
     }
-
-async def process_product_analysis(
-    task_id: str,
-    image_data: bytes,
-    condition: str,
-    user_id: str,
-    cache_service: CacheService
-):
-    """Background task to process product analysis"""
-    
-    try:
-        # Update status to processing
-        await cache_service.set_analysis(task_id, {
-            "status": "processing",
-            "stage": "initializing",
-            "progress": 10
-        })
-        
-        # Initialize AI services
-        vision_service = VisionService(settings.GOOGLE_VISION_API_KEY, settings.OPENAI_API_KEY)
-        gemini_service = GeminiService(settings.GOOGLE_GEMINI_API_KEY)
-        microsoft_vision = MicrosoftVisionService(
-            settings.MICROSOFT_VISION_API_KEY,
-            settings.MICROSOFT_VISION_ENDPOINT
-        )
-        google_shopping = GoogleShoppingService(settings.GOOGLE_SHOPPING_API_KEY)
-        marketplace_service = MarketplaceService()
-        
-        # Stage 1: Vision Analysis
-        await cache_service.set_analysis(task_id, {
-            "status": "processing",
-            "stage": "vision_analysis",
-            "progress": 25
-        })
-        
-        # Run vision analyses in parallel
-        vision_tasks = [
-            vision_service.analyze_image(image_data),
-            gemini_service.analyze_product_image(image_data, condition),
-            microsoft_vision.analyze_product_specific(image_data)
-        ]
-        
-        vision_results = await asyncio.gather(*vision_tasks, return_exceptions=True)
-        
-        # Stage 2: Market Research
-        await cache_service.set_analysis(task_id, {
-            "status": "processing", 
-            "stage": "market_research",
-            "progress": 50
-        })
-        
-        # Extract product info from vision results
-        product_name = "Product"  # Extract from vision results
-        
-        # Search for similar products
-        market_data = await google_shopping.search_products(
-            query=f"{product_name} {condition}",
-            limit=10
-        )
-        
-        # Stage 3: Price Analysis
-        await cache_service.set_analysis(task_id, {
-            "status": "processing",
-            "stage": "price_analysis", 
-            "progress": 75
-        })
-        
-        # Generate pricing recommendations
-        pricing_analysis = marketplace_service.analyze_pricing(market_data, condition)
-        
-        # Stage 4: Final Results
-        await cache_service.set_analysis(task_id, {
-            "status": "completed",
-            "stage": "complete",
-            "progress": 100,
-            "results": {
-                "vision_analysis": vision_results,
-                "market_data": market_data,
-                "pricing_analysis": pricing_analysis,
-                "recommendations": {
-                    "best_platforms": ["eBay", "Facebook Marketplace"],
-                    "estimated_price": pricing_analysis.get("estimated_price", 0),
-                    "confidence": pricing_analysis.get("confidence", 0.5)
-                }
-            },
-            "completed_at": datetime.utcnow().isoformat()
-        })
-        
-    except Exception as e:
-        await cache_service.set_analysis(task_id, {
-            "status": "failed",
-            "error": str(e),
-            "failed_at": datetime.utcnow().isoformat()
-        })
