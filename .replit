@@ -16,3 +16,19 @@ exposeLocalhost = true
 localPort = 5174
 externalPort = 8080
 exposeLocalhost = true
+
+[workflows]
+runButton = "Run Development"
+
+[[workflows.workflow]]
+name = "Run Development"
+author = 37278128
+mode = "parallel"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd api && python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"

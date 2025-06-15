@@ -1,141 +1,70 @@
-
-import redis
 import json
-import hashlib
-from typing import Any, Optional, Dict
+import asyncio
+from typing import Dict, Any, Optional
+import redis.asyncio as redis
 from datetime import datetime, timedelta
 
-
 class CacheService:
-    def __init__(self, redis_url: str = "redis://localhost:6379"):
-        self.redis_client = redis.from_url(redis_url, decode_responses=True)
-        self.default_ttl = 3600  # 1 hour
-    
-    def _generate_key(self, prefix: str, identifier: str) -> str:
-        """Generate a cache key"""
-        return f"{prefix}:{identifier}"
-    
-    def _hash_data(self, data: Any) -> str:
-        """Generate a hash for complex data"""
-        data_str = json.dumps(data, sort_keys=True)
-        return hashlib.md5(data_str.encode()).hexdigest()
-    
-    def store_analysis(self, analysis_result: Dict[str, Any], ttl: Optional[int] = None) -> str:
-        """Store analysis result in cache"""
-        cache_key = self._generate_key("analysis", self._hash_data(analysis_result))
-        
-        cache_data = {
-            "result": analysis_result,
-            "timestamp": datetime.utcnow().isoformat(),
-            "ttl": ttl or self.default_ttl
-        }
-        
-        self.redis_client.setex(
-            cache_key,
-            ttl or self.default_ttl,
-            json.dumps(cache_data)
-        )
-        
-        return cache_key
-    
-    def get_analysis(self, cache_key: str) -> Optional[Dict[str, Any]]:
-        """Retrieve analysis result from cache"""
+    def __init__(self, redis_client: redis.Redis):
+        self.redis = redis_client
+
+    async def set_analysis(self, task_id: str, data: Dict[str, Any], expire_seconds: int = 3600):
+        """Store analysis data in cache"""
         try:
-            cached_data = self.redis_client.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)
-            return None
-        except Exception as e:
-            print(f"Cache retrieval error: {e}")
-            return None
-    
-    def store_product_data(self, product_id: str, product_data: Dict[str, Any], ttl: Optional[int] = None) -> None:
-        """Store product data"""
-        cache_key = self._generate_key("product", product_id)
-        
-        cache_data = {
-            "data": product_data,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        
-        self.redis_client.setex(
-            cache_key,
-            ttl or self.default_ttl,
-            json.dumps(cache_data)
-        )
-    
-    def get_product_data(self, product_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve product data"""
-        cache_key = self._generate_key("product", product_id)
-        try:
-            cached_data = self.redis_client.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)["data"]
-            return None
-        except Exception as e:
-            print(f"Cache retrieval error: {e}")
-            return None
-    
-    def store_market_data(self, search_query: str, market_data: Dict[str, Any], ttl: Optional[int] = None) -> None:
-        """Store market research data"""
-        query_hash = self._hash_data(search_query)
-        cache_key = self._generate_key("market", query_hash)
-        
-        cache_data = {
-            "query": search_query,
-            "data": market_data,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        
-        self.redis_client.setex(
-            cache_key,
-            ttl or (self.default_ttl * 2),  # Market data cached longer
-            json.dumps(cache_data)
-        )
-    
-    def get_market_data(self, search_query: str) -> Optional[Dict[str, Any]]:
-        """Retrieve market research data"""
-        query_hash = self._hash_data(search_query)
-        cache_key = self._generate_key("market", query_hash)
-        
-        try:
-            cached_data = self.redis_client.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)["data"]
-            return None
-        except Exception as e:
-            print(f"Cache retrieval error: {e}")
-            return None
-    
-    def invalidate_cache(self, pattern: str) -> int:
-        """Invalidate cache entries matching pattern"""
-        try:
-            keys = self.redis_client.keys(pattern)
-            if keys:
-                return self.redis_client.delete(*keys)
-            return 0
-        except Exception as e:
-            print(f"Cache invalidation error: {e}")
-            return 0
-    
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
-        try:
-            info = self.redis_client.info()
-            return {
-                "connected_clients": info.get("connected_clients", 0),
-                "used_memory": info.get("used_memory_human", "0B"),
-                "total_commands_processed": info.get("total_commands_processed", 0),
-                "keyspace_hits": info.get("keyspace_hits", 0),
-                "keyspace_misses": info.get("keyspace_misses", 0)
-            }
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def health_check(self) -> bool:
-        """Check if Redis is healthy"""
-        try:
-            self.redis_client.ping()
+            # Add timestamp
+            data["last_updated"] = datetime.utcnow().isoformat()
+
+            # Store as JSON
+            await self.redis.setex(
+                f"analysis:{task_id}",
+                expire_seconds,
+                json.dumps(data, default=str)
+            )
             return True
-        except Exception:
+        except Exception as e:
+            print(f"Cache set error: {e}")
             return False
+
+    async def get_analysis(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve analysis data from cache"""
+        try:
+            data = await self.redis.get(f"analysis:{task_id}")
+            if data:
+                return json.loads(data)
+            return None
+        except Exception as e:
+            print(f"Cache get error: {e}")
+            return None
+
+    async def delete_analysis(self, task_id: str) -> bool:
+        """Delete analysis data from cache"""
+        try:
+            result = await self.redis.delete(f"analysis:{task_id}")
+            return result > 0
+        except Exception as e:
+            print(f"Cache delete error: {e}")
+            return False
+
+    async def set_user_cache(self, user_id: str, key: str, data: Any, expire_seconds: int = 1800):
+        """Set user-specific cache data"""
+        try:
+            await self.redis.setex(
+                f"user:{user_id}:{key}",
+                expire_seconds,
+                json.dumps(data, default=str)
+            )
+            return True
+        except Exception as e:
+            print(f"User cache set error: {e}")
+            return False
+
+    async def get_user_cache(self, user_id: str, key: str) -> Optional[Any]:
+        """Get user-specific cache data"""
+        try:
+            data = await self.redis.get(f"user:{user_id}:{key}")
+            if data:
+                return json.loads(data)
+            return None
+        except Exception as e:
+            print(f"User cache get error: {e}")
+            return None
