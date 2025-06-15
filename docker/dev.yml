@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # Frontend
+  frontend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../src:/app/src
+      - ../public:/app/public
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_SUPABASE_URL=${SUPABASE_URL}
+      - VITE_SUPABASE_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - api
+    networks:
+      - pi_network
+  
+  # API Service
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../api/src:/app/src
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_VISION_API_KEY=${GOOGLE_VISION_API_KEY}
+      - AZURE_VISION_API_KEY=${AZURE_VISION_API_KEY}
+      - EBAY_APP_ID=${EBAY_APP_ID}
+      - EBAY_CERT_ID=${EBAY_CERT_ID}
+      - EBAY_DEV_ID=${EBAY_DEV_ID}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - pi_network
+      
+  # Redis for caching
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - pi_network
+      
+  # Nginx for routing
+  nginx:
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - pi_network
+
+networks:
+  pi_network:
+    driver: bridge
+
+volumes:
+  redis_data:

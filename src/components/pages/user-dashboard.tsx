@@ -14,8 +14,8 @@ import AnalysisHistory from "../dashboard/AnalysisHistory";
 
 
 // If you encounter module resolution errors, ensure tsconfig.json includes the supabase directory and these files.
-import { supabase } from "../../supabase/supabase";
-import { useAuth } from "../../supabase/auth";
+import { supabase } from "../../../supabase/supabase";
+import { useAuth } from "../../../supabase/auth";
 
 export default function UserDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
