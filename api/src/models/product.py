@@ -1,139 +1,108 @@
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+
 
 class ProductCondition(str, Enum):
     NEW = "new"
     LIKE_NEW = "like_new"
-    EXCELLENT = "excellent"
+    VERY_GOOD = "very_good"
     GOOD = "good"
-    FAIR = "fair"
+    ACCEPTABLE = "acceptable"
     POOR = "poor"
+
 
 class ProductCategory(str, Enum):
     ELECTRONICS = "electronics"
     CLOTHING = "clothing"
     HOME_GARDEN = "home_garden"
-    SPORTS_OUTDOORS = "sports_outdoors"
-    BOOKS_MEDIA = "books_media"
-    TOYS_GAMES = "toys_games"
-    AUTOMOTIVE = "automotive"
-    HEALTH_BEAUTY = "health_beauty"
-    JEWELRY_ACCESSORIES = "jewelry_accessories"
+    SPORTS = "sports"
     COLLECTIBLES = "collectibles"
+    BOOKS = "books"
+    TOYS = "toys"
+    AUTOMOTIVE = "automotive"
+    JEWELRY = "jewelry"
     OTHER = "other"
 
-class ImageAnalysisRequest(BaseModel):
-    image_data: str = Field(..., description="Base64 encoded image data")
-    condition: ProductCondition = Field(default=ProductCondition.GOOD)
-    additional_info: Optional[str] = Field(None, description="Additional product information")
-    
-    @validator('image_data')
-    def validate_image_data(cls, v):
-        if not v or len(v) < 100:
-            raise ValueError("Invalid image data")
+
+class PriceRange(BaseModel):
+    min_price: float = Field(ge=0)
+    max_price: float = Field(ge=0)
+    average_price: float = Field(ge=0)
+
+    @validator('max_price')
+    def max_price_must_be_greater_than_min(cls, v, values):
+        if 'min_price' in values and v < values['min_price']:
+            raise ValueError('max_price must be greater than or equal to min_price')
         return v
 
-class ProductFeatures(BaseModel):
-    brand: Optional[str] = None
-    model: Optional[str] = None
-    color: Optional[str] = None
-    size: Optional[str] = None
-    material: Optional[str] = None
-    year: Optional[int] = None
-    condition_details: Optional[str] = None
-    key_features: List[str] = Field(default_factory=list)
-    defects: List[str] = Field(default_factory=list)
-    accessories_included: List[str] = Field(default_factory=list)
 
 class ProductIdentification(BaseModel):
-    name: str = Field(..., description="Product name")
-    category: ProductCategory
-    subcategory: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=200)
     brand: Optional[str] = None
     model: Optional[str] = None
+    category: ProductCategory
+    subcategory: Optional[str] = None
+
+    # Product identifiers
     upc: Optional[str] = None
     ean: Optional[str] = None
-    asin: Optional[str] = None
+    isbn: Optional[str] = None
     mpn: Optional[str] = None  # Manufacturer Part Number
-    features: ProductFeatures = Field(default_factory=ProductFeatures)
-    confidence_score: float = Field(ge=0.0, le=1.0, description="Confidence in identification")
-    
-class PriceRange(BaseModel):
-    low: float = Field(ge=0, description="Lowest estimated price")
-    median: float = Field(ge=0, description="Median estimated price")
-    high: float = Field(ge=0, description="Highest estimated price")
-    currency: str = Field(default="USD")
-    
-    @validator('median')
-    def validate_price_order(cls, v, values):
-        if 'low' in values and v < values['low']:
-            raise ValueError("Median price cannot be lower than low price")
-        return v
-    
-    @validator('high')
-    def validate_high_price(cls, v, values):
-        if 'median' in values and v < values['median']:
-            raise ValueError("High price cannot be lower than median price")
-        return v
 
-class MarketData(BaseModel):
-    source: str = Field(..., description="Data source (e.g., 'ebay', 'amazon')")
-    average_price: Optional[float] = None
-    price_range: Optional[PriceRange] = None
-    total_listings: Optional[int] = None
-    sold_listings: Optional[int] = None
-    average_days_to_sell: Optional[int] = None
-    last_updated: datetime = Field(default_factory=datetime.now)
-    sample_listings: List[Dict[str, Any]] = Field(default_factory=list)
+    # Physical attributes
+    color: Optional[str] = None
+    size: Optional[str] = None
+    weight: Optional[float] = None
+    dimensions: Optional[Dict[str, float]] = None
 
-class ProductAnalysisResult(BaseModel):
-    product_id: Optional[str] = None
+    # Product details
+    description: str = Field(default="", max_length=1000)
+    features: List[str] = Field(default_factory=list)
+    materials: List[str] = Field(default_factory=list)
+
+    # Quality assessment
+    condition: ProductCondition = ProductCondition.GOOD
+    condition_notes: Optional[str] = None
+
+    # Confidence scores
+    identification_confidence: float = Field(ge=0.0, le=1.0, default=0.8)
+    condition_confidence: float = Field(ge=0.0, le=1.0, default=0.8)
+
+
+class ProductImage(BaseModel):
+    image_url: Optional[str] = None
+    image_data: Optional[str] = None  # base64 encoded
+    image_quality_score: float = Field(ge=0.0, le=10.0, default=7.0)
+    image_analysis: Dict[str, Any] = Field(default_factory=dict)
+
+    # Image metadata
+    width: Optional[int] = None
+    height: Optional[int] = None
+    file_size: Optional[int] = None
+    format: Optional[str] = None
+
+
+class Product(BaseModel):
+    id: Optional[str] = None
     identification: ProductIdentification
-    condition: ProductCondition
-    estimated_pricing: PriceRange
-    market_data: List[MarketData] = Field(default_factory=list)
-    analysis_timestamp: datetime = Field(default_factory=datetime.now)
-    processing_time_seconds: Optional[float] = None
-    
-class BulkAnalysisRequest(BaseModel):
-    images: List[ImageAnalysisRequest] = Field(..., max_items=10)
-    batch_id: Optional[str] = None
-    
-    @validator('images')
-    def validate_images_count(cls, v):
-        if len(v) == 0:
-            raise ValueError("At least one image is required")
-        if len(v) > 10:
-            raise ValueError("Maximum 10 images per batch")
-        return v
+    images: List[ProductImage] = Field(default_factory=list)
 
-class ProductSearchQuery(BaseModel):
-    query: str = Field(..., min_length=1, max_length=200)
-    category: Optional[ProductCategory] = None
-    condition: Optional[ProductCondition] = None
-    price_min: Optional[float] = Field(None, ge=0)
-    price_max: Optional[float] = Field(None, ge=0)
-    brand: Optional[str] = None
-    
-    @validator('price_max')
-    def validate_price_range(cls, v, values):
-        if v is not None and 'price_min' in values and values['price_min'] is not None:
-            if v < values['price_min']:
-                raise ValueError("Maximum price cannot be lower than minimum price")
-        return v
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-class ProductListing(BaseModel):
-    title: str
-    description: str
-    price: float
-    condition: ProductCondition
-    images: List[str] = Field(default_factory=list)
-    seller_info: Optional[Dict[str, Any]] = None
-    listing_url: Optional[str] = None
-    platform: str
-    posted_date: Optional[datetime] = None
-    sold_date: Optional[datetime] = None
-    shipping_cost: Optional[float] = None
-    location: Optional[str] = None
+    # User context
+    user_id: Optional[str] = None
+    acquisition_cost: Optional[float] = None
+    acquisition_date: Optional[datetime] = None
+
+    # Additional metadata
+    tags: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }

@@ -1,356 +1,257 @@
 import base64
 import io
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from PIL import Image
-import requests
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import openai
+from google.cloud import vision
+import os
 
-from ..config import settings
-from ..models.analysis import VisionAnalysisResult
 
 class VisionService:
-    """Service for analyzing images using various vision APIs"""
-    
-    def __init__(self):
-        self.google_api_key = settings.GOOGLE_VISION_API_KEY
-        self.azure_api_key = settings.AZURE_VISION_API_KEY
-        self.executor = ThreadPoolExecutor(max_workers=3)
-    
-    async def analyze_image(self, image_data: str) -> VisionAnalysisResult:
-        """Analyze image using available vision services"""
-        import time
-        start_time = time.time()
-        
-        # Prepare image data
-        image_bytes = self._prepare_image_data(image_data)
-        
-        # Run multiple vision services in parallel
-        tasks = []
-        
-        if self.google_api_key:
-            tasks.append(self._analyze_with_google_vision(image_bytes))
-        
-        if self.azure_api_key:
-            tasks.append(self._analyze_with_azure_vision(image_bytes))
-        
-        # Fallback to basic image analysis if no API keys
-        if not tasks:
-            tasks.append(self._basic_image_analysis(image_bytes))
-        
-        # Execute all tasks
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Combine results
-        combined_result = self._combine_vision_results(results)
-        combined_result.processing_time = time.time() - start_time
-        
-        return combined_result
-    
-    def _prepare_image_data(self, image_data: str) -> bytes:
-        """Convert base64 image data to bytes"""
+    def __init__(self, google_api_key: str, openai_api_key: Optional[str] = None):
+        self.google_api_key = google_api_key
+
+        # Initialize Google Vision client
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_api_key
+        self.vision_client = vision.ImageAnnotatorClient()
+
+        # Initialize OpenAI client
+        if openai_api_key:
+            openai.api_key = openai_api_key
+
+    def analyze_image(self, image_data: bytes) -> Dict[str, Any]:
+        """
+        Analyze image using Google Vision API
+        """
         try:
-            # Handle data URL format
-            if ',' in image_data:
-                image_data = image_data.split(',')[1]
-            
-            # Decode base64
-            image_bytes = base64.b64decode(image_data)
-            
-            # Validate and potentially resize image
-            image = Image.open(io.BytesIO(image_bytes))
-            
-            # Resize if too large (max 4MB for most APIs)
-            max_size = (2048, 2048)
-            if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
-                image.thumbnail(max_size, Image.Resampling.LANCZOS)
-                
-                # Convert back to bytes
-                output = io.BytesIO()
-                image.save(output, format='JPEG', quality=85)
-                image_bytes = output.getvalue()
-            
-            return image_bytes
-            
-        except Exception as e:
-            raise ValueError(f"Invalid image data: {str(e)}")
-    
-    async def _analyze_with_google_vision(self, image_bytes: bytes) -> Dict[str, Any]:
-        """Analyze image using Google Cloud Vision API"""
-        try:
-            url = f"https://vision.googleapis.com/v1/images:annotate?key={self.google_api_key}"
-            
-            # Encode image for API
-            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-            
-            payload = {
-                "requests": [{
-                    "image": {"content": image_b64},
-                    "features": [
-                        {"type": "LABEL_DETECTION", "maxResults": 20},
-                        {"type": "TEXT_DETECTION", "maxResults": 10},
-                        {"type": "OBJECT_LOCALIZATION", "maxResults": 15},
-                        {"type": "IMAGE_PROPERTIES", "maxResults": 10}
-                    ]
-                }]
-            }
-            
-            # Make async request
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                self.executor,
-                lambda: requests.post(url, json=payload, timeout=30)
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Google Vision API error: {response.status_code}")
-            
-            data = response.json()
-            return self._parse_google_vision_response(data)
-            
-        except Exception as e:
-            print(f"Google Vision API error: {e}")
-            return {"source": "google", "error": str(e)}
-    
-    async def _analyze_with_azure_vision(self, image_bytes: bytes) -> Dict[str, Any]:
-        """Analyze image using Azure Computer Vision API"""
-        try:
-            # Azure Computer Vision endpoint (you'd need to set this up)
-            endpoint = "https://your-resource.cognitiveservices.azure.com/"
-            url = f"{endpoint}vision/v3.2/analyze"
-            
-            headers = {
-                'Ocp-Apim-Subscription-Key': self.azure_api_key,
-                'Content-Type': 'application/octet-stream'
-            }
-            
-            params = {
-                'visualFeatures': 'Categories,Description,Objects,Tags,Color',
-                'details': 'Landmarks'
-            }
-            
-            # Make async request
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                self.executor,
-                lambda: requests.post(url, headers=headers, params=params, data=image_bytes, timeout=30)
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Azure Vision API error: {response.status_code}")
-            
-            data = response.json()
-            return self._parse_azure_vision_response(data)
-            
-        except Exception as e:
-            print(f"Azure Vision API error: {e}")
-            return {"source": "azure", "error": str(e)}
-    
-    async def _basic_image_analysis(self, image_bytes: bytes) -> Dict[str, Any]:
-        """Basic image analysis without external APIs"""
-        try:
-            image = Image.open(io.BytesIO(image_bytes))
-            
-            # Basic image properties
-            width, height = image.size
-            mode = image.mode
-            
-            # Dominant colors (simplified)
-            colors = self._extract_dominant_colors(image)
-            
-            # Basic object detection based on image properties
-            labels = self._basic_object_detection(image)
-            
-            return {
-                "source": "basic",
-                "labels": labels,
-                "colors": colors,
-                "properties": {
-                    "width": width,
-                    "height": height,
-                    "mode": mode
-                }
-            }
-            
-        except Exception as e:
-            print(f"Basic image analysis error: {e}")
-            return {"source": "basic", "error": str(e)}
-    
-    def _parse_google_vision_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Parse Google Vision API response"""
-        result = {"source": "google", "labels": [], "objects": [], "text_detections": [], "colors": []}
-        
-        if "responses" in data and len(data["responses"]) > 0:
-            response = data["responses"][0]
-            
-            # Labels
-            if "labelAnnotations" in response:
-                result["labels"] = [
-                    label["description"] for label in response["labelAnnotations"]
-                    if label.get("score", 0) > 0.5
+            image = vision.Image(content=image_data)
+
+            # Perform multiple types of detection
+            response = self.vision_client.annotate_image({
+                'image': image,
+                'features': [
+                    {'type_': vision.Feature.Type.LABEL_DETECTION, 'max_results': 20},
+                    {'type_': vision.Feature.Type.TEXT_DETECTION, 'max_results': 10},
+                    {'type_': vision.Feature.Type.OBJECT_LOCALIZATION, 'max_results': 10},
+                    {'type_': vision.Feature.Type.IMAGE_PROPERTIES}
                 ]
-            
-            # Objects
-            if "localizedObjectAnnotations" in response:
-                result["objects"] = [
+            })
+
+            # Process results
+            result = {
+                "labels": self._process_labels(response.label_annotations),
+                "text_annotations": self._process_text(response.text_annotations),
+                "objects": self._process_objects(response.localized_object_annotations),
+                "image_properties": self._process_image_properties(response.image_properties_annotation)
+            }
+
+            # Check for errors
+            if response.error.message:
+                result["error"] = response.error.message
+
+            return result
+
+        except Exception as e:
+            return {"error": f"Google Vision API error: {str(e)}"}
+
+    def analyze_with_gpt4_vision(self, image_base64: str) -> Dict[str, Any]:
+        """
+        Analyze image using OpenAI GPT-4 Vision
+        """
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4-vision-preview",
+                messages=[
                     {
-                        "name": obj["name"],
-                        "confidence": obj.get("score", 0)
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": """Analyze this product image and provide detailed information in JSON format:
+                                {
+                                    "product_details": {
+                                        "name": "product name",
+                                        "brand": "brand name if visible",
+                                        "model": "model number if visible",
+                                        "category": "product category",
+                                        "description": "detailed description",
+                                        "features": ["list", "of", "features"],
+                                        "color": "primary color",
+                                        "materials": ["materials", "if", "visible"]
+                                    },
+                                    "condition_assessment": {
+                                        "score": "condition score 1-10",
+                                        "issues": ["any", "visible", "issues"],
+                                        "notes": "condition notes"
+                                    },
+                                    "confidence": "confidence score 0-1"
+                                }"""
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}"
+                                }
+                            }
+                        ]
                     }
-                    for obj in response["localizedObjectAnnotations"]
-                ]
-            
-            # Text
-            if "textAnnotations" in response:
-                result["text_detections"] = [
-                    text["description"] for text in response["textAnnotations"]
-                ]
-            
-            # Colors
-            if "imagePropertiesAnnotation" in response:
-                colors_data = response["imagePropertiesAnnotation"].get("dominantColors", {})
-                if "colors" in colors_data:
-                    result["colors"] = [
-                        f"rgb({int(color['color']['red'])},{int(color['color']['green'])},{int(color['color']['blue'])})"
-                        for color in colors_data["colors"][:5]
-                    ]
-        
-        return result
-    
-    def _parse_azure_vision_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Parse Azure Vision API response"""
-        result = {"source": "azure", "labels": [], "objects": [], "text_detections": [], "colors": []}
-        
-        # Tags/Labels
-        if "tags" in data:
-            result["labels"] = [
-                tag["name"] for tag in data["tags"]
-                if tag.get("confidence", 0) > 0.5
-            ]
-        
-        # Objects
-        if "objects" in data:
-            result["objects"] = [
-                {
-                    "name": obj["object"],
-                    "confidence": obj.get("confidence", 0)
-                }
-                for obj in data["objects"]
-            ]
-        
-        # Colors
-        if "color" in data:
-            color_data = data["color"]
-            result["colors"] = [
-                color_data.get("dominantColorForeground", ""),
-                color_data.get("dominantColorBackground", "")
-            ]
-        
-        return result
-    
-    def _extract_dominant_colors(self, image: Image.Image, num_colors: int = 5) -> List[str]:
-        """Extract dominant colors from image"""
-        try:
-            # Convert to RGB if necessary
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Resize for faster processing
-            image = image.resize((150, 150))
-            
-            # Get colors using quantization
-            quantized = image.quantize(colors=num_colors)
-            palette = quantized.getpalette()
-            
-            colors = []
-            for i in range(num_colors):
-                r = palette[i * 3]
-                g = palette[i * 3 + 1]
-                b = palette[i * 3 + 2]
-                colors.append(f"rgb({r},{g},{b})")
-            
-            return colors
-            
-        except Exception:
-            return ["rgb(128,128,128)"]  # Default gray
-    
-    def _basic_object_detection(self, image: Image.Image) -> List[str]:
-        """Basic object detection based on image characteristics"""
+                ],
+                max_tokens=1000
+            )
+
+            # Parse the response
+            content = response.choices[0].message.content
+
+            # Try to extract JSON from the response
+            import json
+            import re
+
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            else:
+                return {"error": "Could not parse GPT-4 Vision response", "raw_response": content}
+
+        except Exception as e:
+            return {"error": f"GPT-4 Vision API error: {str(e)}"}
+
+    def _process_labels(self, label_annotations) -> List[Dict[str, Any]]:
+        """Process Google Vision label annotations"""
         labels = []
-        
-        try:
-            width, height = image.size
-            aspect_ratio = width / height
-            
-            # Basic heuristics
-            if aspect_ratio > 1.5:
-                labels.append("rectangular object")
-            elif 0.8 <= aspect_ratio <= 1.2:
-                labels.append("square object")
-            
-            # Analyze brightness
-            grayscale = image.convert('L')
-            histogram = grayscale.histogram()
-            
-            # Calculate average brightness
-            total_pixels = sum(histogram)
-            weighted_sum = sum(i * histogram[i] for i in range(256))
-            avg_brightness = weighted_sum / total_pixels
-            
-            if avg_brightness < 85:
-                labels.append("dark object")
-            elif avg_brightness > 170:
-                labels.append("bright object")
-            
-            # Add generic labels
-            labels.extend(["product", "item", "object"])
-            
-        except Exception:
-            labels = ["product", "item"]
-        
+        for label in label_annotations:
+            labels.append({
+                "description": label.description,
+                "score": label.score,
+                "topicality": label.topicality
+            })
         return labels
-    
-    def _combine_vision_results(self, results: List[Any]) -> VisionAnalysisResult:
-        """Combine results from multiple vision services"""
-        combined = VisionAnalysisResult()
-        
-        all_labels = set()
-        all_objects = []
-        all_text = set()
-        all_colors = set()
-        confidence_scores = {}
-        
-        for result in results:
-            if isinstance(result, Exception):
-                continue
-            
-            if "error" in result:
-                continue
-            
-            # Combine labels
-            if "labels" in result:
-                all_labels.update(result["labels"])
-            
-            # Combine objects
-            if "objects" in result:
-                all_objects.extend(result["objects"])
-            
-            # Combine text
-            if "text_detections" in result:
-                all_text.update(result["text_detections"])
-            
-            # Combine colors
-            if "colors" in result:
-                all_colors.update(result["colors"])
-            
-            # Store confidence scores by source
-            confidence_scores[result.get("source", "unknown")] = 0.8
-        
-        # Convert sets to lists and limit results
-        combined.labels = list(all_labels)[:20]
-        combined.objects = all_objects[:15]
-        combined.text_detections = list(all_text)[:10]
-        combined.colors = list(all_colors)[:10]
-        combined.confidence_scores = confidence_scores
-        
-        return combined
+
+    def _process_text(self, text_annotations) -> List[Dict[str, Any]]:
+        """Process Google Vision text annotations"""
+        texts = []
+        for text in text_annotations:
+            texts.append({
+                "description": text.description,
+                "bounding_poly": {
+                    "vertices": [
+                        {"x": vertex.x, "y": vertex.y}
+                        for vertex in text.bounding_poly.vertices
+                    ]
+                }
+            })
+        return texts
+
+    def _process_objects(self, object_annotations) -> List[Dict[str, Any]]:
+        """Process Google Vision object annotations"""
+        objects = []
+        for obj in object_annotations:
+            objects.append({
+                "name": obj.name,
+                "score": obj.score,
+                "bounding_poly": {
+                    "normalized_vertices": [
+                        {"x": vertex.x, "y": vertex.y}
+                        for vertex in obj.bounding_poly.normalized_vertices
+                    ]
+                }
+            })
+        return objects
+
+    def _process_image_properties(self, image_properties) -> Dict[str, Any]:
+        """Process Google Vision image properties"""
+        if not image_properties:
+            return {}
+
+        dominant_colors = []
+        if image_properties.dominant_colors:
+            for color in image_properties.dominant_colors.colors:
+                dominant_colors.append({
+                    "color": {
+                        "red": color.color.red,
+                        "green": color.color.green,
+                        "blue": color.color.blue
+                    },
+                    "score": color.score,
+                    "pixel_fraction": color.pixel_fraction
+                })
+
+        return {
+            "dominant_colors": dominant_colors
+        }
+
+    def validate_image(self, image_data: bytes) -> Dict[str, Any]:
+        """
+        Validate image quality and format
+        """
+        try:
+            # Open image with PIL
+            image = Image.open(io.BytesIO(image_data))
+
+            # Get image info
+            width, height = image.size
+            format = image.format
+            mode = image.mode
+
+            # Calculate quality score
+            quality_score = 10.0
+            issues = []
+
+            # Check resolution
+            if width < 800 or height < 600:
+                quality_score -= 2.0
+                issues.append("Low resolution - consider higher quality image")
+
+            # Check aspect ratio for marketplaces
+            aspect_ratio = width / height
+            if aspect_ratio < 0.5 or aspect_ratio > 2.0:
+                quality_score -= 1.0
+                issues.append("Unusual aspect ratio - square images work best")
+
+            # Check file size
+            file_size = len(image_data)
+            if file_size > 10 * 1024 * 1024:  # 10MB
+                quality_score -= 1.0
+                issues.append("Large file size - consider compressing")
+            elif file_size < 100 * 1024:  # 100KB
+                quality_score -= 1.5
+                issues.append("Very small file size - may indicate low quality")
+
+            return {
+                "valid": True,
+                "width": width,
+                "height": height,
+                "format": format,
+                "mode": mode,
+                "file_size": file_size,
+                "quality_score": max(0.0, quality_score),
+                "issues": issues
+            }
+
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": f"Image validation failed: {str(e)}"
+            }
+
+    def optimize_image_for_marketplace(self, image_data: bytes, target_size: tuple = (1200, 1200)) -> bytes:
+        """
+        Optimize image for marketplace listing
+        """
+        try:
+            image = Image.open(io.BytesIO(image_data))
+
+            # Convert to RGB if necessary
+            if image.mode in ('RGBA', 'P'):
+                image = image.convert('RGB')
+
+            # Resize while maintaining aspect ratio
+            image.thumbnail(target_size, Image.Resampling.LANCZOS)
+
+            # Save optimized image
+            output = io.BytesIO()
+            image.save(output, format='JPEG', quality=85, optimize=True)
+
+            return output.getvalue()
+
+        except Exception as e:
+            raise Exception(f"Image optimization failed: {str(e)}")
