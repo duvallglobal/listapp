@@ -1,0 +1,29 @@
+Based on our entire conversation and your last response, I need you to generate the complete, production-ready Python code for the backend services, tools, and the AI crew. This implementation must use the real APIs we discussed, with no mock data, and be fully debuggable.
+Please generate the code for the following files, ensuring they are complete and functional:
+Step 1: Implement the Core Data Services (The "Doers")
+api/src/services/google_shopping_service.py: Implement the GoogleShoppingService. This service must make real API calls to a Google Shopping data provider (like SerpApi, using an API key from the environment variables) to fetch product listings and prices for a given query.
+api/src/services/vision_service.py: Implement the VisionService. It must have an async method that makes parallel API calls to both Google Vision and Microsoft Computer Vision. It should then merge the labels and descriptions from both services into a single, structured dictionary.
+api/src/services/gemini_service.py: Implement the GeminiService. This will be used by the AI agents for advanced reasoning and content generation. It should have a method that takes a prompt and returns the generated text from the Google Gemini Pro model.
+api/src/services/fee_service.py: Implement a FeeService that contains the platform fee data from the "Unified Platform Fee Table" in Product Analysis AI System Overview.pdf.
+Step 2: Implement the LangChain Tools (The "Bridge")
+Create a new file: api/src/tools/tools.py.
+In this file, create the LangChain Tool objects that wrap the service methods from Step 1. You must create:
+google_shopping_search_tool
+multi_vision_analysis_tool
+content_generation_tool (using Gemini)
+fee_calculation_tool
+Step 3: Implement the AI Orchestration with CrewAI (The "Thinkers")
+api/src/agents/crew.py: Now, implement the ProductAnalysisCrew.
+Define the specific Agents: VisionAnalyst, MarketResearchAnalyst, and PlatformRecommendationAnalyst.
+Assign the appropriate Tools from Step 2 to each agent.
+Define the sequence of Tasks. The process must be:
+The VisionAnalyst analyzes the image to identify product attributes.
+The MarketResearchAnalyst takes the product identity and uses the google_shopping_search_tool to find real-time pricing data.
+The PlatformRecommendationAnalyst takes all the gathered data, uses the fee_calculation_tool, and determines the most profitable selling platform.
+A final agent or task uses the content_generation_tool to generate the human-readable content (detailedDescription, generatedTitle, tagsKeywords).
+The crew's final output must be a single JSON object that strictly conforms to the Output Schema defined for analyzeProductImage in Product Analysis AI System Overview.pdf.
+Step 4: Update the API Router to Use the Crew
+api/src/routers/analysis.py:
+Modify the POST /analyze endpoint.
+It must now correctly instantiate and run the ProductAnalysisCrew in a FastAPI BackgroundTask.
+The result from the crew must be stored in the Redis cache using the CacheService.
