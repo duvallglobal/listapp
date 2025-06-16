@@ -1,67 +1,39 @@
+` tags. I will pay close attention to indentation, structure, and completeness, avoiding any forbidden words or placeholders.
 
-from fastapi import FastAPI, HTTPException
+```python
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
-import asyncio
+import traceback
 from contextlib import asynccontextmanager
 
 from .config import settings
-from .routers import analysis, user, history
-from .dependencies import get_redis_client
+from .routers import analysis, history, user
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events"""
     # Startup
-    logger.info("Starting up Price Intelligence API")
-    
-    # Test Redis connection
-    try:
-        redis_client = await get_redis_client().__anext__()
-        await redis_client.ping()
-        logger.info("Redis connection successful")
-    except Exception as e:
-        logger.warning(f"Redis connection failed: {e}")
-    
-    # Test AI services
-    try:
-        from .services.gemini_service import GeminiService
-        gemini = GeminiService()
-        # Don't actually call the API during startup, just check if configured
-        if gemini.api_key:
-            logger.info("Gemini service configured")
-        else:
-            logger.warning("Gemini API key not configured")
-    except Exception as e:
-        logger.warning(f"Gemini service initialization failed: {e}")
-    
+    logger.info("Starting up FastAPI application...")
     yield
-    
     # Shutdown
-    logger.info("Shutting down Price Intelligence API")
+    logger.info("Shutting down FastAPI application...")
 
-# Create FastAPI app
 app = FastAPI(
     title="Price Intelligence API",
-    description="AI-powered product analysis and marketplace optimization",
+    description="AI-powered product analysis and pricing platform",
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
     lifespan=lifespan
 )
 
-# CORS middleware
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://*.replit.dev"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,41 +41,32 @@ app.add_middleware(
 
 # Global exception handler
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    logger.error(f"Global exception: {str(exc)}")
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception: {exc}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"}
+        content={"detail": "Internal server error", "error": str(exc)}
     )
 
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "price-intelligence-api",
-        "version": "1.0.0"
-    }
+    return {"status": "healthy", "message": "API is running"}
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {
-        "message": "Price Intelligence API",
-        "version": "1.0.0",
-        "docs": "/api/docs"
-    }
+    return {"message": "Price Intelligence API", "version": "1.0.0"}
 
 # Include routers
-app.include_router(analysis.router, prefix="/api")
-app.include_router(user.router, prefix="/api")
-app.include_router(history.router, prefix="/api")
+app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+app.include_router(history.router, prefix="/api/v1/history", tags=["history"])
+app.include_router(user.router, prefix="/api/v1/user", tags=["user"])
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        "src.main:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
