@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,7 +66,7 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     if (!user) return;
-    
+
     setLoading(true);
     setError(null);
 
@@ -327,7 +326,9 @@ export default function Dashboard() {
       </Card>
     </div>
   );
-}
+};
+
+export default Dashboard;
 
 interface RecentAnalysis {
   id: string;
@@ -339,7 +340,7 @@ interface RecentAnalysis {
   analysis_result?: any;
 }
 
-export default function DashboardPage() {
+export function DashboardPage() {
   const navigate = useNavigate();
   const { connectionStatus, retryConnection } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);

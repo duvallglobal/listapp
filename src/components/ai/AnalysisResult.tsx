@@ -1,321 +1,460 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { 
-  TrendingUp, 
-  DollarSign, 
-  Package, 
-  Calculator,
-  ExternalLink,
-  Download,
-  Share
-} from "lucide-react";
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { AlertCircle, CheckCircle, Clock, DollarSign, TrendingUp, Camera, MapPin, Star, Package, Zap, Copy, Download, Share2, Heart } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/use-toast';
 
-interface AnalysisResultProps {
-  result: {
-    id: string;
-    product_name: string;
-    condition: string;
-    image_url?: string;
-    image_urls?: string[];
-    analysis_result?: any;
-    pricing_data?: any;
-    marketplace_recommendations?: any;
-    fee_calculations?: any;
-    created_at: string;
+interface AnalysisData {
+  id: string;
+  status: 'pending' | 'analyzing' | 'completed' | 'error';
+  productName?: string;
+  brand?: string;
+  category?: string;
+  condition?: string;
+  estimatedValue?: {
+    low: number;
+    median: number;
+    high: number;
   };
+  marketplaceRecommendations?: Array<{
+    platform: string;
+    suitability: number;
+    reasoning: string;
+    estimatedProfit: number;
+    fees: number;
+  }>;
+  confidenceScore?: number;
+  generatedTitle?: string;
+  description?: string;
+  tags?: string[];
+  imageUrl?: string;
+  error?: string;
+  createdAt?: string;
+  analysisVersion?: string;
 }
 
-export default function AnalysisResult({ result }: AnalysisResultProps) {
-  const analysisData = result.analysis_result || {};
-  const pricingData = result.pricing_data || {};
-  const recommendations = result.marketplace_recommendations || {};
-  const feeCalculations = result.fee_calculations || {};
+interface AnalysisResultProps {
+  analysisId: string;
+  data?: AnalysisData;
+  onRetry?: () => void;
+  onSave?: (data: AnalysisData) => void;
+}
 
-  // Get the best image URL
-  const getImageUrl = () => {
-    if (result.image_urls && result.image_urls.length > 0) {
-      return result.image_urls[0];
-    }
-    return result.image_url;
-  };
+const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysisId, data, onRetry, onSave }) => {
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const { toast } = useToast();
 
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.target as HTMLImageElement;
-    img.style.display = 'none';
-  };
+  const handleSaveAnalysis = async () => {
+    if (!data || !onSave) return;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
-
-  const getConditionBadgeVariant = (condition: string) => {
-    switch (condition.toLowerCase()) {
-      case 'new': return 'default';
-      case 'like new': return 'secondary';
-      case 'good': return 'outline';
-      case 'fair': return 'destructive';
-      default: return 'secondary';
+    setIsSaving(true);
+    try {
+      await onSave(data);
+      setIsSaved(true);
+      toast({ title: "Analysis saved successfully!" });
+    } catch (error) {
+      toast({ title: "Failed to save analysis", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const copyToClipboard = (text: string, message: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: message });
+  };
+
+  if (!data) {
+    return (
+      <Card className="w-full max-w-4xl mx-auto">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center space-x-2">
+            <Clock className="h-5 w-5 animate-spin" />
+            <span>Loading analysis...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (data.status === 'error') {
+    return (
+      <Card className="w-full max-w-4xl mx-auto">
+        <CardContent className="p-6">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Analysis failed: {data.error || 'Unknown error occurred'}
+              {onRetry && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={onRetry}
+                  className="ml-2"
+                >
+                  Retry
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (data.status === 'analyzing' || data.status === 'pending') {
+    return (
+      <Card className="w-full max-w-4xl mx-auto">
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Clock className="h-5 w-5 animate-spin" />
+              <span className="font-medium">Analyzing your product...</span>
+            </div>
+            <Progress value={data.status === 'analyzing' ? 75 : 25} className="w-full" />
+            <p className="text-sm text-muted-foreground">
+              This may take a few moments while our AI examines your product.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
+    <div className="w-full max-w-6xl mx-auto space-y-6">
+      {/* Header with Product Info */}
+      <Card>
         <CardHeader>
-          <div className="flex flex-col md:flex-row gap-6">
-            {/* Product Image */}
-            <div className="flex-shrink-0">
-              {getImageUrl() ? (
-                <img
-                  src={getImageUrl()}
-                  alt={result.product_name}
-                  className="w-32 h-32 object-cover rounded-lg border shadow-sm"
-                  onError={handleImageError}
-                />
-              ) : (
-                <div className="w-32 h-32 bg-gray-200 rounded-lg flex items-center justify-center">
-                  <Package className="h-8 w-8 text-gray-400" />
-                </div>
-              )}
-            </div>
-
-            {/* Product Info */}
-            <div className="flex-1">
-              <CardTitle className="text-2xl mb-2">{result.product_name}</CardTitle>
-              <div className="flex items-center gap-2 mb-4">
-                <Badge variant={getConditionBadgeVariant(result.condition)}>
-                  {result.condition}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Analyzed on {new Date(result.created_at).toLocaleDateString()}
-                </span>
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <CardTitle className="text-2xl">{data.productName || 'Product Analysis'}</CardTitle>
+              <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                {data.brand && (
+                  <Badge variant="secondary">{data.brand}</Badge>
+                )}
+                {data.category && (
+                  <Badge variant="outline">{data.category}</Badge>
+                )}
+                {data.condition && (
+                  <Badge variant="outline">Condition: {data.condition}</Badge>
+                )}
               </div>
-              <CardDescription className="text-base">
-                {analysisData.description || "AI-powered analysis complete with pricing insights and recommendations."}
-              </CardDescription>
             </div>
-
-            {/* Actions */}
-            <div className="flex flex-col gap-2">
-              <Button size="sm" variant="outline">
-                <Share className="h-4 w-4 mr-2" />
-                Share
-              </Button>
-              <Button size="sm" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
+            <div className="flex items-center space-x-2">
+              {data.confidenceScore && (
+                <Badge variant={data.confidenceScore > 0.8 ? 'default' : 'secondary'}>
+                  {Math.round(data.confidenceScore * 100)}% Confidence
+                </Badge>
+              )}
+              <CheckCircle className="h-5 w-5 text-green-500" />
             </div>
           </div>
         </CardHeader>
+        {data.imageUrl && (
+          <CardContent>
+            <div className="flex justify-center">
+              <img 
+                src={data.imageUrl} 
+                alt={data.productName}
+                className="max-h-64 rounded-lg object-contain border"
+              />
+            </div>
+          </CardContent>
+        )}
       </Card>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Est. Selling Price</p>
-                <p className="text-xl font-bold text-green-600">
-                  {formatCurrency(analysisData.estimated_price || 0)}
+      {/* Main Analysis Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Price Estimates */}
+        {data.estimatedValue && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <DollarSign className="h-5 w-5" />
+                <span>Price Estimates</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm">Low</span>
+                  <span className="font-medium">${data.estimatedValue.low}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Median</span>
+                  <span className="font-bold text-lg">${data.estimatedValue.median}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">High</span>
+                  <span className="font-medium">${data.estimatedValue.high}</span>
+                </div>
+              </div>
+              <Separator />
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Recommended Price</p>
+                <p className="text-2xl font-bold text-primary">${data.estimatedValue.median}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Top Recommendation */}
+        {data.marketplaceRecommendations && data.marketplaceRecommendations.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <TrendingUp className="h-5 w-5" />
+                <span>Best Platform</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="text-center">
+                  <h3 className="font-bold text-lg">{data.marketplaceRecommendations[0].platform}</h3>
+                  <div className="flex items-center justify-center space-x-1">
+                    {[...Array(5)].map((_, i) => (
+                      <Star 
+                        key={i} 
+                        className={`h-4 w-4 ${
+                          i < Math.round(data.marketplaceRecommendations![0].suitability / 2) 
+                            ? 'fill-yellow-400 text-yellow-400' 
+                            : 'text-gray-300'
+                        }`}
+                      />
+                    ))}
+                    <span className="ml-2 text-sm">({data.marketplaceRecommendations[0].suitability}/10)</span>
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm">Est. Profit</span>
+                    <span className="font-medium text-green-600">
+                      ${data.marketplaceRecommendations[0].estimatedProfit}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm">Platform Fees</span>
+                    <span className="text-sm text-muted-foreground">
+                      ${data.marketplaceRecommendations[0].fees || 0}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {data.marketplaceRecommendations[0].reasoning}
                 </p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
+        {/* Quick Stats */}
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Package className="h-5 w-5" />
+              <span>Quick Stats</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-sm text-muted-foreground">Profit Potential</p>
-                <p className="text-xl font-bold text-blue-600">
-                  {formatCurrency(analysisData.estimated_profit || 0)}
-                </p>
+                <p className="text-muted-foreground">Analysis ID</p>
+                <p className="font-mono text-xs">{analysisId.slice(0, 8)}</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Calculator className="h-5 w-5 text-purple-600" />
               <div>
-                <p className="text-sm text-muted-foreground">Total Fees</p>
-                <p className="text-xl font-bold text-purple-600">
-                  {formatCurrency(feeCalculations.total_fees || 0)}
-                </p>
+                <p className="text-muted-foreground">Platforms</p>
+                <p className="font-medium">{data.marketplaceRecommendations?.length || 0}</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-orange-600" />
               <div>
-                <p className="text-sm text-muted-foreground">Demand Level</p>
-                <p className="text-xl font-bold text-orange-600">
-                  {analysisData.demand_level || 'Medium'}
-                </p>
+                <p className="text-muted-foreground">Tags</p>
+                <p className="font-medium">{data.tags?.length || 0}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Status</p>
+                <Badge variant="default" className="text-xs">Completed</Badge>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Marketplace Comparison */}
-      {recommendations.marketplaces && recommendations.marketplaces.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Marketplace Comparison</CardTitle>
-            <CardDescription>
-              Compare potential selling opportunities across different platforms
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recommendations.marketplaces.map((marketplace: any, index: number) => (
-                <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <span className="font-semibold text-sm">{marketplace.name?.charAt(0) || 'M'}</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">{marketplace.name || 'Marketplace'}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {marketplace.category || 'General marketplace'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{formatCurrency(marketplace.estimated_price || 0)}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {marketplace.commission_rate || '10'}% commission
-                    </p>
-                  </div>
-                  <Button size="sm" variant="outline">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Detailed Analysis Tabs */}
+      <Card>
+        <Tabs defaultValue="recommendations" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="recommendations">Platform Recommendations</TabsTrigger>
+            <TabsTrigger value="listing">Listing Content</TabsTrigger>
+            <TabsTrigger value="details">Analysis Details</TabsTrigger>
+          </TabsList>
 
-      {/* Pricing Insights */}
-      {pricingData.similar_products && pricingData.similar_products.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Similar Products</CardTitle>
-            <CardDescription>
-              Pricing data from similar products to help optimize your listing
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {pricingData.similar_products.slice(0, 6).map((product: any, index: number) => (
-                <Card key={index} className="border-l-4 border-l-blue-500">
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      {product.image_url && (
-                        <img
-                          src={product.image_url}
-                          alt={product.title}
-                          className="w-16 h-16 object-cover rounded"
-                          onError={handleImageError}
-                        />
-                      )}
-                      <div className="flex-1">
-                        <h5 className="font-medium text-sm mb-1 line-clamp-2">
-                          {product.title || 'Similar Product'}
-                        </h5>
-                        <p className="text-lg font-bold text-green-600">
-                          {formatCurrency(product.price || 0)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {product.marketplace || 'Unknown marketplace'}
-                        </p>
+          <TabsContent value="recommendations" className="p-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold">All Platform Recommendations</h3>
+              <div className="grid gap-4">
+                {data.marketplaceRecommendations?.map((rec, index) => (
+                  <Card key={index} className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium">{rec.platform}</h4>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="outline">{rec.suitability}/10</Badge>
+                        <span className="text-sm font-medium text-green-600">
+                          ${rec.estimatedProfit} profit
+                        </span>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Fee Breakdown */}
-      {feeCalculations.breakdown && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Fee Breakdown</CardTitle>
-            <CardDescription>
-              Detailed breakdown of selling fees across different platforms
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {Object.entries(feeCalculations.breakdown).map(([platform, fees]: [string, any]) => (
-                <div key={platform} className="border rounded-lg p-4">
-                  <h4 className="font-semibold mb-3 capitalize">{platform}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Commission</p>
-                      <p className="font-medium">{formatCurrency(fees.commission || 0)}</p>
+                    <p className="text-sm text-muted-foreground mb-2">{rec.reasoning}</p>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Platform fees: ${rec.fees || 0}</span>
+                      <span>Suitability: {rec.suitability * 10}%</span>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">Payment Processing</p>
-                      <p className="font-medium">{formatCurrency(fees.payment_processing || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Listing Fee</p>
-                      <p className="font-medium">{formatCurrency(fees.listing_fee || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Total</p>
-                      <p className="font-semibold text-red-600">{formatCurrency(fees.total || 0)}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* AI Insights */}
-      {analysisData.insights && (
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Insights & Recommendations</CardTitle>
-            <CardDescription>
-              Smart recommendations to maximize your selling potential
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="prose max-w-none">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-blue-800">{analysisData.insights}</p>
+                  </Card>
+                ))}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </TabsContent>
+
+          <TabsContent value="listing" className="p-6">
+            <div className="space-y-6">
+              {data.generatedTitle && (
+                <div>
+                  <h3 className="font-semibold mb-2">Optimized Title</h3>
+                  <div className="flex items-center space-x-2">
+                    <p className="flex-1 p-3 bg-muted rounded-lg">{data.generatedTitle}</p>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      copyToClipboard(data.generatedTitle!, "Title copied to clipboard");
+                    }}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {data.description && (
+                <div>
+                  <h3 className="font-semibold mb-2">Product Description</h3>
+                  <div className="flex space-x-2">
+                    <div className="flex-1 p-3 bg-muted rounded-lg">
+                      <p className="whitespace-pre-wrap">{data.description}</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      copyToClipboard(data.description!, "Description copied to clipboard");
+                    }}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {data.tags && data.tags.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-2">Suggested Tags</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {data.tags.map((tag, index) => (
+                      <Badge key={index} variant="secondary">{tag}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="details" className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="font-semibold mb-3">Product Information</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Name:</span>
+                    <span>{data.productName || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Brand:</span>
+                    <span>{data.brand || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Category:</span>
+                    <span>{data.category || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Condition:</span>
+                    <span>{data.condition || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Confidence:</span>
+                    <span>{data.confidenceScore ? `${Math.round(data.confidenceScore * 100)}%` : 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold mb-3">Analysis Metadata</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Analysis ID:</span>
+                    <span className="font-mono text-xs">{analysisId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Created:</span>
+                    <span>{data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Version:</span>
+                    <span>{data.analysisVersion || '1.0'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge variant="default">Completed</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </Card>
+
+      {/* Action Buttons */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Button 
+              onClick={handleSaveAnalysis}
+              disabled={isSaving || isSaved}
+              className="flex items-center space-x-2"
+            >
+              <Heart className="h-4 w-4" />
+              <span>{isSaved ? 'Saved' : isSaving ? 'Saving...' : 'Save Analysis'}</span>
+            </Button>
+
+            <Button variant="outline" onClick={() => {
+              const analysisText = `Analysis Results for ${data.productName}\n\nPrice Range: $${data.estimatedValue?.low} - $${data.estimatedValue?.high}\nRecommended Price: $${data.estimatedValue?.median}\nBest Platform: ${data.marketplaceRecommendations?.[0]?.platform}\nConfidence: ${Math.round((data.confidenceScore || 0) * 100)}%`;
+              copyToClipboard(analysisText, "Analysis copied to clipboard");
+            }}>
+              <Copy className="h-4 w-4 mr-2" />
+              Copy Results
+            </Button>
+
+            <Button variant="outline">
+              <Share2 className="h-4 w-4 mr-2" />
+              Share
+            </Button>
+
+            <Button variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Export PDF
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
-}
+};
+
+export default AnalysisResult;
