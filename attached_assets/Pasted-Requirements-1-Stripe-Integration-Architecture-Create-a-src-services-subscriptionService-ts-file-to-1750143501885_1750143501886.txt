@@ -1,0 +1,38 @@
+Requirements
+1. Stripe Integration Architecture
+Create a src/services/subscriptionService.ts file to handle all Stripe-related operations
+Implement Supabase tables for storing subscription data, usage tracking, and credit allocation
+Design a secure webhook handler for Stripe events
+2. Core Subscription Features
+Implement subscription tier management with different feature sets and credit allocations
+Create checkout flows for new subscriptions and upgrades
+Build subscription cancellation and downgrade logic
+Develop credit usage tracking system tied to AI analysis requests
+3. Frontend Components
+Create src/components/subscription/PricingPlans.tsx to display available subscription options
+Implement src/components/subscription/SubscriptionManager.tsx for users to manage their current plan
+Build src/components/subscription/CreditUsage.tsx to display remaining credits and usage history
+Add subscription status indicators throughout the application
+4. Backend Logic
+Implement secure Stripe webhook handler in /api/webhooks/stripe.ts
+Create credit allocation system in src/services/creditService.ts
+Build usage tracking middleware to deduct credits for premium features
+5. Admin Controls
+Create admin interfaces for managing user subscriptions
+Implement manual credit allocation for admin users
+Build reporting tools for subscription analytics
+Technical Guidelines
+Use Stripe's latest API version and React components
+Implement proper error handling for payment failures
+Store sensitive information securely (no API keys in frontend code)
+Add comprehensive logging for payment events
+Create fallback mechanisms for when Stripe services are unavailable
+Implement proper testing for payment flows
+Deliverables
+Complete subscription service with Stripe integration
+Supabase table structure for subscription data
+Frontend components for subscription management
+Webhook handler for Stripe events
+Credit allocation and tracking system
+Admin interfaces for subscription management
+Please ensure all code follows our established patterns, includes proper TypeScript interfaces, and has comprehensive error handling. The subscription system should gracefully handle edge cases like failed payments, subscription changes, and credit depletion.
