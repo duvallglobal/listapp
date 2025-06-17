@@ -27,7 +27,7 @@ interface AnalysisResultProps {
   };
 }
 
-export function AnalysisResult({ result }: AnalysisResultProps) {
+export default function AnalysisResult({ result }: AnalysisResultProps) {
   const analysisData = result.analysis_result || {};
   const pricingData = result.pricing_data || {};
   const recommendations = result.marketplace_recommendations || {};

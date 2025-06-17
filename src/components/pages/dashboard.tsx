@@ -31,6 +31,304 @@ interface DashboardStats {
   analysesLimit: number;
 }
 
+interface AnalysisHistoryItem {
+  id: string;
+  created_at: string;
+  product_name: string;
+  product_image: string | null;
+  recommended_price: number;
+  recommended_platform: string;
+  analysis_data: any;
+}
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const { user, connectionStatus, retryConnection } = useAuth();
+  const [stats, setStats] = useState<DashboardStats>({
+    totalAnalyses: 0,
+    analysesThisMonth: 0,
+    averageProfit: 0,
+    subscriptionTier: 'Free',
+    analysesUsed: 0,
+    analysesLimit: 5
+  });
+  const [recentAnalyses, setRecentAnalyses] = useState<AnalysisHistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user && connectionStatus === 'connected') {
+      fetchDashboardData();
+    } else if (connectionStatus === 'disconnected') {
+      setError('Database connection lost. Please try again.');
+      setLoading(false);
+    }
+  }, [user, connectionStatus]);
+
+  const fetchDashboardData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Fetch user stats
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('credits, subscription')
+        .eq('user_id', user.id)
+        .single();
+
+      if (userError && userError.code !== 'PGRST116') {
+        throw userError;
+      }
+
+      // Fetch analysis history
+      const { data: analysisData, error: analysisError } = await supabase
+        .from('analysis_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (analysisError && analysisError.code !== 'PGRST116') {
+        throw analysisError;
+      }
+
+      // Calculate stats
+      const totalAnalyses = analysisData?.length || 0;
+      const thisMonth = new Date();
+      thisMonth.setDate(1);
+      thisMonth.setHours(0, 0, 0, 0);
+
+      const analysesThisMonth = analysisData?.filter(
+        analysis => new Date(analysis.created_at) >= thisMonth
+      ).length || 0;
+
+      const averageProfit = analysisData?.length 
+        ? analysisData.reduce((sum, analysis) => sum + (analysis.recommended_price || 0), 0) / analysisData.length
+        : 0;
+
+      const credits = parseInt(userData?.credits || '5');
+      const subscription = userData?.subscription || 'Free';
+
+      setStats({
+        totalAnalyses,
+        analysesThisMonth,
+        averageProfit,
+        subscriptionTier: subscription,
+        analysesUsed: Math.max(0, 5 - credits), // Assuming 5 is the base free credits
+        analysesLimit: subscription === 'Free' ? 5 : subscription === 'Pro' ? 50 : 500
+      });
+
+      setRecentAnalyses(analysisData || []);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setError(handleSupabaseError(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnalyzeNew = () => {
+    navigate('/analyze');
+  };
+
+  const handleViewAnalysis = (analysisId: string) => {
+    navigate(`/analysis/${analysisId}`);
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading dashboard...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Connection Status */}
+      {connectionStatus !== 'connected' && (
+        <Alert variant="destructive">
+          <WifiOff className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>Database connection issue. Some features may not work properly.</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={retryConnection}
+              className="ml-4"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Welcome Section */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Welcome back!</h1>
+          <p className="text-muted-foreground">
+            Here's what's happening with your product analyses.
+          </p>
+        </div>
+        <Button onClick={handleAnalyzeNew} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Analyze Product
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Analyses</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalAnalyses}</div>
+            <p className="text-xs text-muted-foreground">
+              +{stats.analysesThisMonth} this month
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg. Profit</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(stats.averageProfit)}</div>
+            <p className="text-xs text-muted-foreground">
+              Per product analysis
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Credits Used</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.analysesUsed}/{stats.analysesLimit}</div>
+            <Progress 
+              value={(stats.analysesUsed / stats.analysesLimit) * 100} 
+              className="mt-2"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Subscription</CardTitle>
+            <Badge variant="outline">{stats.subscriptionTier}</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.subscriptionTier}</div>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="mt-2 p-0 h-auto"
+              onClick={() => navigate('/subscription')}
+            >
+              Manage Plan
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Analyses */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Analyses</CardTitle>
+          <CardDescription>
+            Your most recent product analyses and their results.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentAnalyses.length === 0 ? (
+            <div className="text-center py-8">
+              <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No analyses yet</h3>
+              <p className="text-muted-foreground mb-4">
+                Get started by analyzing your first product.
+              </p>
+              <Button onClick={handleAnalyzeNew}>
+                Analyze Your First Product
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentAnalyses.map((analysis) => (
+                <div
+                  key={analysis.id}
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    {analysis.product_image ? (
+                      <img
+                        src={analysis.product_image}
+                        alt={analysis.product_name}
+                        className="w-12 h-12 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
+                        <Search className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="font-medium">{analysis.product_name}</h4>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(analysis.created_at).toLocaleDateString()}
+                        <span>•</span>
+                        <span>{formatCurrency(analysis.recommended_price)}</span>
+                        <span>•</span>
+                        <span>{analysis.recommended_platform}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleViewAnalysis(analysis.id)}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 interface RecentAnalysis {
   id: string;
   product_name: string;

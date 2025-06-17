@@ -1,157 +1,173 @@
-
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { useState } from "react";
 
-// Auth components
+// Layout Components
+import Sidebar from "@/components/dashboard/layout/Sidebar";
+import TopNavigation from "@/components/dashboard/layout/TopNavigation";
+
+// Pages
+import HomePage from "@/components/pages/home";
+import DashboardPage from "@/components/pages/dashboard";
+import SubscriptionPage from "@/components/pages/subscription";
+import ProductAnalyzer from "@/components/ai/ProductAnalyzer";
+import AnalysisHistory from "@/components/dashboard/AnalysisHistory";
+
+// Auth Components
 import AuthLayout from "@/components/auth/AuthLayout";
 import LoginForm from "@/components/auth/LoginForm";
 import SignUpForm from "@/components/auth/SignUpForm";
 
-// Dashboard components  
-import { TopNavigation } from "@/components/dashboard/layout/TopNavigation";
-
-// Page components
-import HomePage from "@/components/pages/home";
-import DashboardPage from "@/components/pages/dashboard";
-import AnalysisPage from "@/components/pages/analysis";
-import SubscriptionPage from "@/components/pages/subscription";
-import SuccessPage from "@/components/pages/success";
-
-// Loading component
-function LoadingScreen() {
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    </div>
-  );
-}
-
-// Protected route wrapper
+// Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, connectionStatus } = useAuth();
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return (
-    <div className="flex h-screen">
-      <aside className="w-64 border-r bg-background">
-        <ErrorBoundary fallback={
-          <div className="p-4 text-center">
-            <p className="text-sm text-muted-foreground">Navigation unavailable</p>
-          </div>
-        }>
-          <TopNavigation user={user} />
-        </ErrorBoundary>
-      </aside>
-      <main className="flex-1 overflow-auto">
-        <ErrorBoundary>
-          {children}
-        </ErrorBoundary>
-      </main>
-    </div>
-  );
-}
-
-// Public route wrapper
-function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <LoadingScreen />;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
+  if (!user) {
+    return <Navigate to="/auth/login" replace />;
   }
 
   return <>{children}</>;
 }
 
+// Dashboard Layout Wrapper
+function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  return (
+    <div className="flex h-screen bg-background">
+      <Sidebar 
+        collapsed={sidebarCollapsed} 
+        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} 
+      />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <TopNavigation />
+        <main className="flex-1 overflow-auto p-6">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
+  const { user } = useAuth();
+
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/" element={
-        <PublicRoute>
-          <HomePage />
-        </PublicRoute>
-      } />
-      
-      <Route path="/login" element={
-        <PublicRoute>
-          <AuthLayout>
-            <LoginForm />
-          </AuthLayout>
-        </PublicRoute>
-      } />
-      
-      <Route path="/signup" element={
-        <PublicRoute>
-          <AuthLayout>
-            <SignUpForm />
-          </AuthLayout>
-        </PublicRoute>
-      } />
+      {/* Public Routes */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <HomePage />} />
+      <Route path="/auth" element={<AuthLayout />}>
+        <Route path="login" element={<LoginForm />} />
+        <Route path="signup" element={<SignUpForm />} />
+      </Route>
 
-      {/* Protected routes */}
+      {/* Protected Dashboard Routes */}
       <Route path="/dashboard" element={
         <ProtectedRoute>
-          <DashboardPage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/analysis" element={
-        <ProtectedRoute>
-          <AnalysisPage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/history" element={
-        <ProtectedRoute>
-          <DashboardPage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/subscription" element={
-        <ProtectedRoute>
-          <SubscriptionPage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/success" element={
-        <ProtectedRoute>
-          <SuccessPage />
+          <DashboardLayout>
+            <DashboardPage />
+          </DashboardLayout>
         </ProtectedRoute>
       } />
 
-      {/* Catch all route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/analyze" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <ProductAnalyzer />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/history" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <AnalysisHistory />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/subscription" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <SubscriptionPage />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      {/* Placeholder routes for new features */}
+      <Route path="/analytics" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-4">Analytics Dashboard</h2>
+              <p className="text-muted-foreground">Coming soon...</p>
+            </div>
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/profile" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-4">Profile Management</h2>
+              <p className="text-muted-foreground">Coming soon...</p>
+            </div>
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/notifications" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-4">Notifications</h2>
+              <p className="text-muted-foreground">Coming soon...</p>
+            </div>
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/settings" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-4">Settings</h2>
+              <p className="text-muted-foreground">Coming soon...</p>
+            </div>
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
 
-export default function App() {
+function App() {
   return (
     <ErrorBoundary>
-      <Router>
-        <AuthProvider>
-          <div className="min-h-screen bg-background font-sans antialiased">
+      <AuthProvider>
+        <Router>
+          <div className="min-h-screen bg-background">
             <AppRoutes />
             <Toaster />
           </div>
-        </AuthProvider>
-      </Router>
+        </Router>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
+
+export default App;

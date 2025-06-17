@@ -14,15 +14,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import ImageUploader from "./ImageUploader";
 import ConditionSelector, { ProductCondition } from "./ConditionSelector";
 import AnalysisLoading from "./AnalysisLoading";
-import AnalysisResult, {
-  AnalysisResultData,
-  MarketplaceRecommendation,
-} from "./AnalysisResult";
+import AnalysisResult from "./AnalysisResult";
 import { supabase } from "../../../supabase/supabase";
 import { useAuth } from "../../../supabase/auth";
 
 interface ProductAnalyzerProps {
-  onAnalysisComplete?: (result: AnalysisResultData) => void;
+  onAnalysisComplete?: (result: any) => void;
   className?: string;
 }
 
@@ -38,8 +35,7 @@ export default function ProductAnalyzer({
     useState<ProductCondition>("good");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStage, setAnalysisStage] = useState(1);
-  const [analysisResult, setAnalysisResult] =
-    useState<AnalysisResultData | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [remainingCredits, setRemainingCredits] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
