@@ -328,8 +328,6 @@ export default function Dashboard() {
   );
 };
 
-export default Dashboard;
-
 interface RecentAnalysis {
   id: string;
   product_name: string;
