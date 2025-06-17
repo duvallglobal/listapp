@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { 
   Home, 
   Search, 
@@ -16,10 +17,13 @@ import {
   History, 
   Settings, 
   LogOut,
-  User
+  User,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/supabase/supabase";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface TopNavigationProps {
   user?: any;
@@ -28,7 +32,9 @@ interface TopNavigationProps {
 export function TopNavigation({ user }: TopNavigationProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { connectionStatus, retryConnection } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const handleSignOut = async () => {
     setIsLoading(true);
@@ -42,6 +48,16 @@ export function TopNavigation({ user }: TopNavigationProps) {
     }
   };
 
+  const handleRetryConnection = async () => {
+    setIsRetrying(true);
+    try {
+      await retryConnection();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  // Updated navigation items (removed Team and Help)
   const navigationItems = [
     {
       name: "Dashboard",
@@ -79,10 +95,39 @@ export function TopNavigation({ user }: TopNavigationProps) {
         </div>
       </div>
 
+      {/* Connection Status */}
+      {connectionStatus !== 'connected' && (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700">
+                {connectionStatus === 'checking' ? 'Checking connection...' : 'Database offline'}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRetryConnection}
+              disabled={isRetrying || connectionStatus === 'checking'}
+              className="text-red-700 border-red-300 hover:bg-red-100"
+            >
+              {isRetrying ? (
+                <RefreshCw className="h-3 w-3 animate-spin" />
+              ) : (
+                'Retry'
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 space-y-2 px-4 py-6">
         {navigationItems.map((item) => {
           const Icon = item.icon;
+          const disabled = connectionStatus !== 'connected' && item.href !== '/dashboard';
+          
           return (
             <Button
               key={item.name}
@@ -91,15 +136,35 @@ export function TopNavigation({ user }: TopNavigationProps) {
                 isActive(item.href) 
                   ? "bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20" 
                   : "hover:bg-gradient-to-r hover:from-blue-500/5 hover:to-purple-500/5"
-              }`}
-              onClick={() => navigate(item.href)}
+              } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+              onClick={() => !disabled && navigate(item.href)}
+              disabled={disabled}
             >
               <Icon className="mr-3 h-5 w-5" />
               {item.name}
+              {disabled && (
+                <Badge variant="secondary" className="ml-auto text-xs">
+                  Offline
+                </Badge>
+              )}
             </Button>
           );
         })}
       </nav>
+
+      {/* Connection Status Badge */}
+      <div className="px-4 pb-2">
+        <div className="flex items-center justify-center">
+          <Badge 
+            variant={connectionStatus === 'connected' ? 'default' : 'destructive'}
+            className="text-xs"
+          >
+            {connectionStatus === 'connected' && '● Online'}
+            {connectionStatus === 'disconnected' && '● Offline'}
+            {connectionStatus === 'checking' && '● Connecting...'}
+          </Badge>
+        </div>
+      </div>
 
       {/* User Menu */}
       <div className="border-t p-4">
@@ -112,24 +177,40 @@ export function TopNavigation({ user }: TopNavigationProps) {
                   {user?.full_name?.charAt(0) || user?.email?.charAt(0) || "U"}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex flex-col items-start">
-                <span className="text-sm font-medium">
+              <div className="flex flex-col items-start flex-1 min-w-0">
+                <span className="text-sm font-medium truncate">
                   {user?.full_name || "User"}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground truncate">
                   {user?.email}
                 </span>
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem onClick={() => navigate("/profile")}>
+            <DropdownMenuItem 
+              onClick={() => navigate("/profile")}
+              disabled={connectionStatus !== 'connected'}
+            >
               <User className="mr-2 h-4 w-4" />
               Profile
+              {connectionStatus !== 'connected' && (
+                <Badge variant="secondary" className="ml-auto text-xs">
+                  Offline
+                </Badge>
+              )}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/settings")}>
+            <DropdownMenuItem 
+              onClick={() => navigate("/settings")}
+              disabled={connectionStatus !== 'connected'}
+            >
               <Settings className="mr-2 h-4 w-4" />
               Settings
+              {connectionStatus !== 'connected' && (
+                <Badge variant="secondary" className="ml-auto text-xs">
+                  Offline
+                </Badge>
+              )}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} disabled={isLoading}>

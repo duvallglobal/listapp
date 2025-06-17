@@ -1,29 +1,33 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session, AuthError } from "@supabase/supabase-js";
-import { supabase } from "@/supabase/supabase";
+import { supabase, testSupabaseConnection, handleSupabaseError } from "@/lib/supabase";
 import { toast } from "@/components/ui/use-toast";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  connectionStatus: 'connected' | 'disconnected' | 'checking';
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   updateProfile: (updates: { full_name?: string; avatar_url?: string }) => Promise<{ error: any }>;
+  retryConnection: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   loading: true,
+  connectionStatus: 'checking',
   signUp: async () => ({ error: null }),
   signIn: async () => ({ error: null }),
   signOut: async () => ({ error: null }),
   resetPassword: async () => ({ error: null }),
   updateProfile: async () => ({ error: null }),
+  retryConnection: async () => {},
 });
 
 export const useAuth = () => {
@@ -42,24 +46,71 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+
+  // Test connection on mount
+  useEffect(() => {
+    checkConnection();
+  }, []);
+
+  const checkConnection = async () => {
+    setConnectionStatus('checking');
+    try {
+      const isConnected = await testSupabaseConnection();
+      setConnectionStatus(isConnected ? 'connected' : 'disconnected');
+      if (!isConnected) {
+        toast({
+          title: "Connection Issue",
+          description: "Unable to connect to the database. Some features may not work.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Connection check failed:', error);
+      setConnectionStatus('disconnected');
+    }
+  };
+
+  const retryConnection = async () => {
+    await checkConnection();
+    if (connectionStatus === 'connected') {
+      // Retry getting session if connection is restored
+      await getInitialSession();
+    }
+  };
+
+  const getInitialSession = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("Error getting session:", error);
+        toast({
+          title: "Session Error",
+          description: handleSupabaseError(error),
+          variant: "destructive",
+        });
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
+    } catch (error) {
+      console.error("Error in getInitialSession:", error);
+      toast({
+        title: "Authentication Error",
+        description: "Failed to restore your session. Please log in again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("Error getting session:", error);
-        } else {
-          setSession(session);
-          setUser(session?.user ?? null);
-        }
-      } catch (error) {
-        console.error("Error in getInitialSession:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Only proceed if we have a connection
+    if (connectionStatus !== 'connected') {
+      setLoading(false);
+      return;
+    }
 
     getInitialSession();
 
@@ -94,6 +145,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
               description: "Your profile has been updated successfully.",
             });
             break;
+          case 'PASSWORD_RECOVERY':
+            toast({
+              title: "Password reset",
+              description: "Please check your email for password reset instructions.",
+            });
+            break;
         }
       }
     );
@@ -101,9 +158,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [connectionStatus]);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
+    if (connectionStatus !== 'connected') {
+      const error = new Error('No database connection') as AuthError;
+      toast({
+        title: "Connection Error",
+        description: "Cannot sign up without database connection. Please try again later.",
+        variant: "destructive",
+      });
+      return { error };
+    }
+
     try {
       setLoading(true);
       const { data, error } = await supabase.auth.signUp({
@@ -119,7 +186,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (error) {
         toast({
           title: "Sign up failed",
-          description: error.message,
+          description: handleSupabaseError(error),
           variant: "destructive",
         });
         return { error };
@@ -135,13 +202,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return { error: null };
     } catch (error) {
       console.error("Sign up error:", error);
-      return { error: error as AuthError };
+      const authError = new Error(handleSupabaseError(error)) as AuthError;
+      return { error: authError };
     } finally {
       setLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
+    if (connectionStatus !== 'connected') {
+      const error = new Error('No database connection') as AuthError;
+      toast({
+        title: "Connection Error",
+        description: "Cannot sign in without database connection. Please try again later.",
+        variant: "destructive",
+      });
+      return { error };
+    }
+
     try {
       setLoading(true);
       const { error } = await supabase.auth.signInWithPassword({
@@ -152,7 +230,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (error) {
         toast({
           title: "Sign in failed",
-          description: error.message,
+          description: handleSupabaseError(error),
           variant: "destructive",
         });
         return { error };
@@ -161,7 +239,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return { error: null };
     } catch (error) {
       console.error("Sign in error:", error);
-      return { error: error as AuthError };
+      const authError = new Error(handleSupabaseError(error)) as AuthError;
+      return { error: authError };
     } finally {
       setLoading(false);
     }
@@ -175,7 +254,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (error) {
         toast({
           title: "Sign out failed",
-          description: error.message,
+          description: handleSupabaseError(error),
           variant: "destructive",
         });
         return { error };
@@ -184,13 +263,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return { error: null };
     } catch (error) {
       console.error("Sign out error:", error);
-      return { error: error as AuthError };
+      const authError = new Error(handleSupabaseError(error)) as AuthError;
+      return { error: authError };
     } finally {
       setLoading(false);
     }
   };
 
   const resetPassword = async (email: string) => {
+    if (connectionStatus !== 'connected') {
+      const error = new Error('No database connection') as AuthError;
+      toast({
+        title: "Connection Error",
+        description: "Cannot reset password without database connection. Please try again later.",
+        variant: "destructive",
+      });
+      return { error };
+    }
+
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
@@ -199,7 +289,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (error) {
         toast({
           title: "Password reset failed",
-          description: error.message,
+          description: handleSupabaseError(error),
           variant: "destructive",
         });
         return { error };
@@ -213,11 +303,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return { error: null };
     } catch (error) {
       console.error("Password reset error:", error);
-      return { error: error as AuthError };
+      const authError = new Error(handleSupabaseError(error)) as AuthError;
+      return { error: authError };
     }
   };
 
   const updateProfile = async (updates: { full_name?: string; avatar_url?: string }) => {
+    if (connectionStatus !== 'connected') {
+      const error = new Error('No database connection');
+      toast({
+        title: "Connection Error",
+        description: "Cannot update profile without database connection. Please try again later.",
+        variant: "destructive",
+      });
+      return { error };
+    }
+
     try {
       if (!user) throw new Error("No user logged in");
 
@@ -228,20 +329,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (error) {
         toast({
           title: "Profile update failed",
-          description: error.message,
+          description: handleSupabaseError(error),
           variant: "destructive",
         });
         return { error };
       }
 
-      // Also update the users table
-      const { error: dbError } = await supabase
-        .from('users')
-        .update(updates)
-        .eq('id', user.id);
+      // Also update the users table if connected
+      try {
+        const { error: dbError } = await supabase
+          .from('users')
+          .update(updates)
+          .eq('id', user.id);
 
-      if (dbError) {
-        console.error("Database update error:", dbError);
+        if (dbError) {
+          console.error("Database update error:", dbError);
+          // Don't fail the whole operation for this
+        }
+      } catch (dbError) {
+        console.error("Database update failed:", dbError);
       }
 
       return { error: null };
@@ -255,11 +361,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     session,
     loading,
+    connectionStatus,
     signUp,
     signIn,
     signOut,
     resetPassword,
     updateProfile,
+    retryConnection,
   };
 
   return (

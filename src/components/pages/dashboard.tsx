@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Search, 
   TrendingUp, 
@@ -11,10 +12,15 @@ import {
   BarChart3,
   Plus,
   Eye,
-  Calendar
+  Calendar,
+  AlertCircle,
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/supabase/supabase";
+import { supabase, handleSupabaseError } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DashboardStats {
   totalAnalyses: number;
@@ -32,54 +38,83 @@ interface RecentAnalysis {
   created_at: string;
   status: string;
   image_url?: string;
+  analysis_result?: any;
 }
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { connectionStatus, retryConnection } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAnalyses, setRecentAnalyses] = useState<RecentAnalysis[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (connectionStatus === 'connected') {
+      fetchDashboardData();
+    } else if (connectionStatus === 'disconnected') {
+      setLoading(false);
+      setError('No database connection available');
+    }
+  }, [connectionStatus]);
 
   const fetchDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      setLoading(true);
+      setError(null);
 
-      // Fetch user stats
-      const { data: userData } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setError('No authenticated user found');
+        return;
+      }
+
+      // Fetch user stats with error handling
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('subscription_tier, analyses_used')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      // Fetch analysis history
-      const { data: analyses, count: totalCount } = await supabase
+      if (userError && userError.code !== 'PGRST116') {
+        throw userError;
+      }
+
+      // Fetch analysis history with error handling
+      const { data: analyses, count: totalCount, error: analysisError } = await supabase
         .from('analysis_history')
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(5);
 
+      if (analysisError) {
+        console.error('Analysis fetch error:', analysisError);
+        // Don't throw, just log and continue with empty data
+      }
+
       // Fetch this month's analyses
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      const { count: monthlyCount } = await supabase
+      const { count: monthlyCount, error: monthlyError } = await supabase
         .from('analysis_history')
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .gte('created_at', startOfMonth.toISOString());
 
-      // Calculate average profit (mock data for now)
+      if (monthlyError) {
+        console.error('Monthly count error:', monthlyError);
+      }
+
+      // Calculate average profit safely
       const averageProfit = analyses?.length ? 
         analyses.reduce((acc, analysis) => {
           const result = analysis.analysis_result;
-          return acc + (result?.estimated_profit || 0);
+          const profit = result?.estimated_profit || result?.profit || 0;
+          return acc + (typeof profit === 'number' ? profit : 0);
         }, 0) / analyses.length : 0;
 
       // Get subscription limits
@@ -91,20 +126,35 @@ export default function DashboardPage() {
         enterprise: 5000
       };
 
+      const subscriptionTier = userData?.subscription_tier || 'free_trial';
+
       setStats({
         totalAnalyses: totalCount || 0,
         analysesThisMonth: monthlyCount || 0,
         averageProfit,
-        subscriptionTier: userData?.subscription_tier || 'free_trial',
+        subscriptionTier,
         analysesUsed: userData?.analyses_used || 0,
-        analysesLimit: tierLimits[userData?.subscription_tier as keyof typeof tierLimits] || 2
+        analysesLimit: tierLimits[subscriptionTier as keyof typeof tierLimits] || 2
       });
 
       setRecentAnalyses(analyses || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
+      setError(handleSupabaseError(error));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await retryConnection();
+      if (connectionStatus === 'connected') {
+        await fetchDashboardData();
+      }
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -114,28 +164,63 @@ export default function DashboardPage() {
       description: "Analyze a product with AI",
       icon: Search,
       action: () => navigate("/analysis"),
-      color: "bg-blue-500"
+      color: "bg-blue-500",
+      disabled: connectionStatus !== 'connected'
     },
     {
       title: "View History",
       description: "See past analyses",
       icon: BarChart3,
       action: () => navigate("/history"),
-      color: "bg-green-500"
+      color: "bg-green-500",
+      disabled: connectionStatus !== 'connected'
     },
     {
       title: "Upgrade Plan",
       description: "Unlock more features",
       icon: TrendingUp,
       action: () => navigate("/subscription"),
-      color: "bg-purple-500"
+      color: "bg-purple-500",
+      disabled: connectionStatus !== 'connected'
     }
   ];
 
-  if (loading) {
+  // Connection Status Component
+  const ConnectionStatus = () => (
+    <Alert className={connectionStatus === 'connected' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}>
+      <div className="flex items-center space-x-2">
+        {connectionStatus === 'connected' ? (
+          <Wifi className="h-4 w-4 text-green-600" />
+        ) : (
+          <WifiOff className="h-4 w-4 text-red-600" />
+        )}
+        <AlertDescription className={connectionStatus === 'connected' ? 'text-green-700' : 'text-red-700'}>
+          {connectionStatus === 'connected' && 'Connected to database'}
+          {connectionStatus === 'disconnected' && 'Database connection lost'}
+          {connectionStatus === 'checking' && 'Checking connection...'}
+        </AlertDescription>
+        {connectionStatus !== 'connected' && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRetry}
+            disabled={retrying}
+            className="ml-auto"
+          >
+            {retrying ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Retry'}
+          </Button>
+        )}
+      </div>
+    </Alert>
+  );
+
+  if (loading && connectionStatus === 'checking') {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -151,6 +236,30 @@ export default function DashboardPage() {
           Welcome back! Here's an overview of your price intelligence activities.
         </p>
       </div>
+
+      {/* Connection Status */}
+      <div className="mb-6">
+        <ConnectionStatus />
+      </div>
+
+      {/* Error State */}
+      {error && (
+        <Alert className="mb-6 border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700">
+            {error}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRetry}
+              disabled={retrying}
+              className="ml-2"
+            >
+              {retrying ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Retry'}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -226,6 +335,7 @@ export default function DashboardPage() {
                     variant="link" 
                     className="p-0 ml-1 h-auto"
                     onClick={() => navigate("/subscription")}
+                    disabled={connectionStatus !== 'connected'}
                   >
                     Upgrade your plan
                   </Button> to continue analyzing products.
@@ -251,8 +361,10 @@ export default function DashboardPage() {
               return (
                 <Card 
                   key={index} 
-                  className="cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105"
-                  onClick={action.action}
+                  className={`cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105 ${
+                    action.disabled ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={() => !action.disabled && action.action()}
                 >
                   <CardContent className="p-6 text-center">
                     <div className={`inline-flex p-3 rounded-full ${action.color} mb-4`}>
@@ -260,6 +372,11 @@ export default function DashboardPage() {
                     </div>
                     <h3 className="font-semibold mb-2">{action.title}</h3>
                     <p className="text-sm text-muted-foreground">{action.description}</p>
+                    {action.disabled && (
+                      <Badge variant="secondary" className="mt-2">
+                        Requires Connection
+                      </Badge>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -269,7 +386,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Recent Analyses */}
-      {recentAnalyses.length > 0 && (
+      {connectionStatus === 'connected' && recentAnalyses.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -290,6 +407,10 @@ export default function DashboardPage() {
                       src={analysis.image_url} 
                       alt={analysis.product_name}
                       className="h-16 w-16 object-cover rounded-lg"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
                     />
                   )}
                   <div className="flex-1">
@@ -312,7 +433,7 @@ export default function DashboardPage() {
       )}
 
       {/* Empty State */}
-      {recentAnalyses.length === 0 && (
+      {connectionStatus === 'connected' && recentAnalyses.length === 0 && !loading && (
         <Card>
           <CardContent className="text-center py-12">
             <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -320,9 +441,26 @@ export default function DashboardPage() {
             <p className="text-muted-foreground mb-4">
               Start by analyzing your first product to see insights here.
             </p>
-            <Button onClick={() => navigate("/analysis")}>
+            <Button onClick={() => navigate("/analysis")} disabled={connectionStatus !== 'connected'}>
               <Plus className="h-4 w-4 mr-2" />
               Start First Analysis
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Offline State */}
+      {connectionStatus === 'disconnected' && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <WifiOff className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Offline Mode</h3>
+            <p className="text-muted-foreground mb-4">
+              Some features are unavailable while offline. Check your connection and try again.
+            </p>
+            <Button onClick={handleRetry} disabled={retrying}>
+              {retrying ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Retry Connection
             </Button>
           </CardContent>
         </Card>

@@ -4,8 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Check, Crown, Zap, Building, Enterprise } from "lucide-react";
-import { supabase } from "@/supabase/supabase";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Check, Crown, Zap, Building, Enterprise, AlertCircle, Loader2 } from "lucide-react";
+import { supabase, handleSupabaseError } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 
 interface SubscriptionTier {
@@ -53,6 +55,7 @@ const subscriptionTiers: SubscriptionTier[] = [
     analysisLimit: 50,
     icon: Check,
     description: "Great for individuals and small sellers",
+    stripePriceId: "price_basic_monthly",
     features: [
       "50 product analyses per month",
       "Advanced marketplace comparison",
@@ -70,6 +73,7 @@ const subscriptionTiers: SubscriptionTier[] = [
     icon: Crown,
     popular: true,
     description: "Perfect for growing businesses",
+    stripePriceId: "price_pro_monthly",
     features: [
       "200 product analyses per month",
       "AI-powered pricing recommendations",
@@ -88,6 +92,7 @@ const subscriptionTiers: SubscriptionTier[] = [
     analysisLimit: 1000,
     icon: Building,
     description: "Designed for established businesses",
+    stripePriceId: "price_business_monthly",
     features: [
       "1,000 product analyses per month",
       "Advanced AI insights",
@@ -107,6 +112,7 @@ const subscriptionTiers: SubscriptionTier[] = [
     analysisLimit: 5000,
     icon: Enterprise,
     description: "For large organizations with custom needs",
+    stripePriceId: "price_enterprise_monthly",
     features: [
       "5,000+ product analyses per month",
       "Custom AI model training",
@@ -122,37 +128,54 @@ const subscriptionTiers: SubscriptionTier[] = [
 ];
 
 export default function SubscriptionPage() {
+  const { connectionStatus } = useAuth();
   const [currentSubscription, setCurrentSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSubscriptionData();
-  }, []);
+    if (connectionStatus === 'connected') {
+      fetchSubscriptionData();
+    } else if (connectionStatus === 'disconnected') {
+      setLoading(false);
+      setError('No database connection available');
+    }
+  }, [connectionStatus]);
 
   const fetchSubscriptionData = async () => {
     try {
+      setLoading(true);
+      setError(null);
+
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setError('No authenticated user found');
+        return;
+      }
 
       // Get user subscription
-      const { data: subscription, error } = await supabase
+      const { data: subscription, error: subError } = await supabase
         .from('subscriptions')
         .select('*')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      if (subError && subError.code !== 'PGRST116') {
+        throw subError;
       }
 
       // Get usage data
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('analyses_used, subscription_tier')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
+
+      if (userError && userError.code !== 'PGRST116') {
+        throw userError;
+      }
 
       if (subscription) {
         setCurrentSubscription({
@@ -171,19 +194,24 @@ export default function SubscriptionPage() {
           analyses_used: userData?.analyses_used || 0
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching subscription data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load subscription data.",
-        variant: "destructive"
-      });
+      setError(handleSupabaseError(error));
     } finally {
       setLoading(false);
     }
   };
 
   const handleUpgrade = async (tierId: string) => {
+    if (connectionStatus !== 'connected') {
+      toast({
+        title: "Connection Required",
+        description: "Please check your internet connection and try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setUpgrading(tierId);
     
     try {
@@ -197,10 +225,44 @@ export default function SubscriptionPage() {
         return;
       }
 
-      // Create checkout session
+      // For demo purposes, simulate upgrade process
+      // In production, you would create a Stripe checkout session
+      if (tierId === 'free_trial') {
+        toast({
+          title: "Already on Free Trial",
+          description: "You're currently using the free trial.",
+        });
+        return;
+      }
+
+      // Simulate upgrade process
+      toast({
+        title: "Upgrade Started",
+        description: "Redirecting to payment processor...",
+      });
+
+      // Simulate payment redirect
+      setTimeout(() => {
+        toast({
+          title: "Demo Mode",
+          description: "In production, this would redirect to Stripe checkout. For now, simulating successful upgrade.",
+        });
+        
+        // Update local state to show upgrade
+        const newTier = subscriptionTiers.find(t => t.id === tierId);
+        if (newTier && currentSubscription) {
+          setCurrentSubscription({
+            ...currentSubscription,
+            tier: tierId
+          });
+        }
+      }, 2000);
+
+      // In production, use this code:
+      /*
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
-          priceId: tierId,
+          priceId: subscriptionTiers.find(t => t.id === tierId)?.stripePriceId,
           userId: user.id,
           email: user.email
         }
@@ -211,15 +273,16 @@ export default function SubscriptionPage() {
       if (data?.url) {
         window.location.href = data.url;
       }
-    } catch (error) {
+      */
+    } catch (error: any) {
       console.error('Error creating checkout session:', error);
       toast({
-        title: "Error",
-        description: "Failed to start upgrade process. Please try again.",
+        title: "Upgrade Failed",
+        description: handleSupabaseError(error),
         variant: "destructive"
       });
     } finally {
-      setUpgrading(null);
+      setTimeout(() => setUpgrading(null), 2000);
     }
   };
 
@@ -233,10 +296,13 @@ export default function SubscriptionPage() {
     return Math.min((used / currentTier.analysisLimit) * 100, 100);
   };
 
-  if (loading) {
+  if (loading && connectionStatus === 'checking') {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading subscription data...</p>
+        </div>
       </div>
     );
   }
@@ -253,8 +319,18 @@ export default function SubscriptionPage() {
         </p>
       </div>
 
+      {/* Connection/Error Alert */}
+      {(connectionStatus !== 'connected' || error) && (
+        <Alert className="mb-6 border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700">
+            {error || 'Database connection required for subscription management'}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Current Plan Status */}
-      {currentSubscription && (
+      {currentSubscription && connectionStatus === 'connected' && (
         <Card className="mb-8 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -264,6 +340,9 @@ export default function SubscriptionPage() {
             <CardDescription>
               {currentSubscription.tier !== 'free_trial' && currentSubscription.current_period_end && (
                 <>Next billing: {new Date(currentSubscription.current_period_end).toLocaleDateString()}</>
+              )}
+              {currentSubscription.tier === 'free_trial' && (
+                <>Free trial - no billing required</>
               )}
             </CardDescription>
           </CardHeader>
@@ -338,21 +417,30 @@ export default function SubscriptionPage() {
                 <Button 
                   className="w-full mt-4"
                   variant={isCurrentTier ? "secondary" : tier.popular ? "default" : "outline"}
-                  disabled={isCurrentTier || upgrading !== null}
+                  disabled={isCurrentTier || upgrading !== null || connectionStatus !== 'connected'}
                   onClick={() => !isCurrentTier && handleUpgrade(tier.id)}
                 >
                   {upgrading === tier.id ? (
-                    "Processing..."
+                    <div className="flex items-center">
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </div>
                   ) : isCurrentTier ? (
                     "Current Plan"
                   ) : isDowngrade ? (
                     "Downgrade"
                   ) : tier.id === 'free_trial' ? (
-                    "Current Plan"
+                    "Free Plan"
                   ) : (
                     "Upgrade Now"
                   )}
                 </Button>
+
+                {connectionStatus !== 'connected' && !isCurrentTier && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Requires internet connection
+                  </p>
+                )}
               </CardContent>
             </Card>
           );
@@ -364,7 +452,7 @@ export default function SubscriptionPage() {
         <p className="text-muted-foreground mb-4">
           Need a custom plan? Contact our sales team for enterprise solutions.
         </p>
-        <Button variant="outline">
+        <Button variant="outline" disabled={connectionStatus !== 'connected'}>
           Contact Sales
         </Button>
       </div>
