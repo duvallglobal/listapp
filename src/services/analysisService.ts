@@ -1,5 +1,6 @@
-
 import { supabase } from '@/lib/supabase';
+import { creditService } from './creditService';
+import { toast } from '@/components/ui/use-toast';
 import { imageService, UploadedImage } from './imageService';
 
 export interface AnalysisRequest {
@@ -56,6 +57,19 @@ class AnalysisService {
    */
   async submitAnalysis(request: AnalysisRequest, userId: string): Promise<string> {
     try {
+      // Check if user can perform analysis (credits/subscription)
+      if (userId) {
+        const canAnalyze = await creditService.canUserAnalyze(userId);
+        if (!canAnalyze) {
+          toast({
+            title: "Insufficient Credits",
+            description: "You don't have enough credits or have reached your subscription limit. Please upgrade your plan.",
+            variant: "destructive"
+          });
+          throw new Error('Insufficient credits or subscription limit reached');
+        }
+      }
+
       // Upload image first
       const uploadedImage = await imageService.uploadImage(
         request.imageFile, 
@@ -116,7 +130,7 @@ class AnalysisService {
 
       // Call backend API (replace with your actual backend URL)
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-      
+
       const formData = new FormData();
       formData.append('image', request.imageFile);
       formData.append('estimated_cost', request.estimatedCost?.toString() || '0');
@@ -142,7 +156,7 @@ class AnalysisService {
 
     } catch (error) {
       console.error('Backend analysis error:', error);
-      
+
       // Mark analysis as failed
       await supabase
         .from('analysis_history')
@@ -152,7 +166,7 @@ class AnalysisService {
           updated_at: new Date().toISOString()
         })
         .eq('id', analysisId);
-      
+
       throw error;
     }
   }
@@ -190,6 +204,14 @@ class AnalysisService {
       if (error) {
         throw new Error(`Failed to update analysis: ${error.message}`);
       }
+
+           // Deduct credits after successful analysis
+           try {
+            await creditService.processAnalysisRequest(analysisId);
+          } catch (creditError) {
+            console.error('Error processing credit deduction:', creditError);
+            // Don't fail the analysis if credit deduction fails
+          }
 
     } catch (error) {
       console.error('Update analysis error:', error);
@@ -295,7 +317,7 @@ class AnalysisService {
         const profits = profitData
           .map(item => item.marketplace_recommendations?.[0]?.estimatedProfit || 0)
           .filter(profit => profit > 0);
-        
+
         if (profits.length > 0) {
           averageProfit = profits.reduce((sum, profit) => sum + profit, 0) / profits.length;
         }
@@ -346,7 +368,7 @@ class AnalysisService {
     try {
       // Get analysis data first to clean up images
       const analysis = await this.getAnalysis(analysisId);
-      
+
       if (analysis?.imageUrl) {
         // Extract path from URL and delete from storage
         const url = new URL(analysis.imageUrl);
