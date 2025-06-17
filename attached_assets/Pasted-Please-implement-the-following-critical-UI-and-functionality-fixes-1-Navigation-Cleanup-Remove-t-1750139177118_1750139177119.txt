@@ -1,0 +1,35 @@
+Please implement the following critical UI and functionality fixes:
+
+1. Navigation Cleanup: Remove the "Team" item completely from the sidebar as it's not relevant to the application's functionality.
+
+2. Remove Broken Links: Delete the "Help" item from the sidebar as it currently leads to a non-functional page.
+
+3. Fix Subscription Button Functionality: Repair the "Upgrade Now" button in the Subscriptions tab which is currently non-functional. This button should properly connect to and update the user's current subscription package.
+
+4. Add Missing Subscription Tiers: Implement the missing Enterprise and Business subscription packages that are currently not visible in the available plans section. Ensure all subscription tiers are properly displayed and selectable.
+
+5. Remove Unnecessary UI Elements: Completely remove the Recent Activity box from the UI to streamline the interface and improve focus on essential functionality.
+
+6. Fix Image Display Issues: Resolve the issue where photos from previously completed analyses are not properly displaying in the interface. Ensure all analysis images are correctly loaded and visible.
+
+7. Streamline Dashboard Navigation: Restructure the navigation by moving the functionality currently under the three dashboard tabs (labeled "Recent Analysis" and "Subscriptions") directly into the sidebar navigation. This will eliminate redundant menus and provide a more straightforward user experience with all main functions accessible directly from the sidebar.
+
+Additionally, implement a complete and functional authentication system using Supabase with these requirements:
+
+1. Environment Configuration: Create a comprehensive .env file with all required variables properly documented, including Supabase URL, API keys, and any other necessary configuration parameters.
+
+2. Robust Authentication: Implement a Supabase client initialization that gracefully handles missing environment variables and provides clear error messages when configuration is incomplete.
+
+3. Database Structure: Create all necessary database tables, Row Level Security (RLS) policies, and storage buckets using proper Supabase migrations to ensure data security and integrity.
+
+4. Complete User Flows: Set up fully functional user authentication flows including signup, login, password reset, and account management.
+
+5. Protected Routes: Implement protected routes and authentication state management in the frontend to ensure secure access to application features.
+
+6. Error Handling: Add comprehensive error handling for all authentication processes with user-friendly error messages.
+
+7. Connection Verification: Include a connection test utility that verifies Supabase connectivity on startup and provides clear feedback if connection issues are detected.
+
+8. Setup Documentation: Provide detailed step-by-step instructions for configuring a new Supabase project specifically for this application.
+
+All code must be production-ready with no placeholders, mock data, or simulated APIs. Maintain the existing design system featuring glass morphism effects and modern animations while implementing these fixes. Include comprehensive testing procedures to verify all functionality is working correctly.
