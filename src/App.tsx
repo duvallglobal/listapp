@@ -1,75 +1,150 @@
-import { Suspense } from "react";
-import { Navigate, Route, Routes, useRoutes } from "react-router-dom";
-import routes from "tempo-routes";
-import LoginForm from "./components/auth/LoginForm";
-import SignUpForm from "./components/auth/SignUpForm";
-import UserDashboard from "./components/pages/user-dashboard";
-import AnalysisPage from "./components/pages/analysis";
-import SubscriptionPage from "./components/pages/subscription";
-import Success from "./components/pages/success";
-import Home from "./components/pages/home";
-import { AuthProvider, useAuth } from "../supabase/auth";
-import { Toaster } from "./components/ui/toaster";
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { Toaster } from "@/components/ui/toaster";
+import { TopNavigation } from "@/components/dashboard/layout/TopNavigation";
+
+// Pages
+import HomePage from "@/components/pages/home";
+import DashboardPage from "@/components/pages/dashboard";
+import AnalysisPage from "@/components/pages/analysis";
+import SubscriptionPage from "@/components/pages/subscription";
+import SuccessPage from "@/components/pages/success";
+import { AuthLayout } from "@/components/auth/AuthLayout";
+import { LoginForm } from "@/components/auth/LoginForm";
+import { SignUpForm } from "@/components/auth/SignUpForm";
+import { AnalysisHistory } from "@/components/dashboard/AnalysisHistory";
+
+// Protected Route Component
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
 
   if (!user) {
-    return <Navigate to="/" />;
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <div className="w-64 bg-white border-r">
+        <TopNavigation user={user} />
+      </div>
+      <div className="flex-1 overflow-auto">
+        <main className="p-6">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// Public Route Component
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
 }
 
-function AppRoutes() {
+function AppContent() {
   return (
-    <>
+    <Router>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<LoginForm />} />
-        <Route path="/signup" element={<SignUpForm />} />
+        {/* Public Routes */}
+        <Route path="/" element={<HomePage />} />
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <AuthLayout>
+                <LoginForm />
+              </AuthLayout>
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <PublicRoute>
+              <AuthLayout>
+                <SignUpForm />
+              </AuthLayout>
+            </PublicRoute>
+          }
+        />
+
+        {/* Protected Routes */}
         <Route
           path="/dashboard"
           element={
-            <PrivateRoute>
-              <UserDashboard />
-            </PrivateRoute>
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/analysis"
           element={
-            <PrivateRoute>
+            <ProtectedRoute>
               <AnalysisPage />
-            </PrivateRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <ProtectedRoute>
+              <AnalysisHistory />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/subscription"
           element={
-            <PrivateRoute>
+            <ProtectedRoute>
               <SubscriptionPage />
-            </PrivateRoute>
+            </ProtectedRoute>
           }
         />
-        <Route path="/success" element={<Success />} />
+        <Route
+          path="/success"
+          element={
+            <ProtectedRoute>
+              <SuccessPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Catch all route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
-    </>
+      <Toaster />
+    </Router>
   );
 }
 
 function App() {
   return (
     <AuthProvider>
-      <Suspense fallback={<p>Loading...</p>}>
-        <AppRoutes />
-      </Suspense>
-      <Toaster />
+      <AppContent />
     </AuthProvider>
   );
 }
