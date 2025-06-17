@@ -1,0 +1,71 @@
+I need help implementing these critical features for my React application that uses Supabase as the backend:
+
+1. Complete AI Product Analysis Integration
+Please help me:
+
+Connect my frontend to the AI analysis backend API
+Implement proper error handling and retry logic
+Create a clean UI to display analysis results
+Store analysis results in Supabase
+Add functionality to view historical analyses
+Implement proper loading states during API calls
+2. Image Upload & Display System
+I need a complete system to:
+
+Upload product images to Supabase Storage
+Generate and store image URLs in the database
+Display uploaded images in the saved analysis view
+Handle multiple image uploads
+Implement image compression before upload
+Add proper error handling for failed uploads
+Create a gallery view for multiple product images
+3. Stripe Subscription Management
+Please help me:
+
+Connect Stripe API for subscription management
+Create subscription tiers with different features
+Implement webhook handling for subscription events
+Store subscription data in Supabase
+Create UI for users to manage their subscriptions
+Handle subscription cancellation and upgrades
+Implement credit-based system for AI analysis usage
+6. Admin Panel Development
+Create an admin dashboard that allows:
+
+User management (view, edit, delete users)
+Subscription management and overrides
+View application usage statistics
+Monitor API usage and costs
+Manual credit allocation to users
+Content moderation for user-generated content
+System announcements to all users
+4. User Profile Management
+I need a complete profile system with:
+
+User information editing (name, email, etc.)
+Subscription status display
+Usage statistics and remaining credits
+Account deletion functionality
+Password reset functionality
+Email verification process
+5. Responsive Design Optimization
+Help me make my application fully responsive:
+
+Implement proper breakpoints for different devices
+Create mobile-friendly navigation
+Optimize image display for mobile
+Ensure forms work well on small screens
+Fix any overflow issues on small screens
+Implement proper touch interactions for mobile
+Test and fix issues on various screen sizes
+For each feature, please provide:
+
+Component structure with proper TypeScript interfaces
+Supabase queries and mutations
+Error handling strategies
+Loading state management
+Proper authentication checks
+Reusable components where appropriate
+Testing strategies
+My application uses React with TypeScript, Supabase for backend, Stripe for payments, and Clerk for authentication. Please ensure all code follows best practices and is production-ready.
+
