@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -127,7 +126,7 @@ export function TopNavigation({ user }: TopNavigationProps) {
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const disabled = connectionStatus !== 'connected' && item.href !== '/dashboard';
-          
+
           return (
             <Button
               key={item.name}
